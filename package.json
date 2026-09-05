@@ -1,0 +1,21 @@
+{
+  "name": "barbershop-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Barbershop Operating System - Configurable Single-Business Multi-Outlet Management Platform",
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "check-types": "turbo run check-types"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@barber/business-rules",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@barber/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@barber/config-typescript": "workspace:*",
+    "@electric-sql/pglite": "^0.5.8",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}
