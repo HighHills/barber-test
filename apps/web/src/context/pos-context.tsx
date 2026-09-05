@@ -226,6 +226,9 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       let activeReg = (registers && registers.length > 0) ? (registers[0] as CashRegister) : null;
 
       // Auto-create register if not exists
+      // NOTE: RLS cash_registers_insert requires is_owner_or_admin().
+      // Non-owner cashiers will get RLS denial here — surface it clearly
+      // instead of failing silently. OWNER must seed register per outlet.
       if (!activeReg) {
         const { data: createdReg, error: createErr } = await supabase
           .from('cash_registers')
@@ -239,6 +242,14 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
 
         if (!createErr && createdReg) {
           activeReg = createdReg as CashRegister;
+        } else if (createErr) {
+          setError(
+            `Register laci kasir belum ada di outlet ini dan tidak dapat dibuat otomatis (${createErr.message}). Minta OWNER/ADMIN untuk membuatkan register atau jalankan supabase/seed_operational_data.sql.`
+          );
+        } else {
+          setError(
+            'Register laci kasir belum terdaftar pada outlet ini. Minta OWNER/ADMIN untuk membuatkan register atau jalankan supabase/seed_operational_data.sql.'
+          );
         }
       }
 

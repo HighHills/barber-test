@@ -29,7 +29,7 @@ export interface PaymentMethod {
   is_active: boolean;
 }
 
-export type SaleStatus = 'COMPLETED' | 'REFUNDED' | 'VOIDED';
+export type SaleStatus = 'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'VOIDED';
 export type SaleItemType = 'SERVICE' | 'PRODUCT';
 export type CommissionType = 'PERCENTAGE' | 'FIXED' | 'TIERED';
 

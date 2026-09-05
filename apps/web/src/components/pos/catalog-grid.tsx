@@ -59,7 +59,7 @@ export function CatalogGrid({
             description,
             base_unit,
             product_outlets!inner(selling_price, is_active),
-            outlet_inventory(quantity)
+            outlet_inventory(outlet_id, quantity)
           `)
           .eq('is_active', true)
           .eq('product_outlets.outlet_id', outletId)
@@ -83,8 +83,11 @@ export function CatalogGrid({
         const mappedProducts: CatalogItem[] = (productData || []).map((p: any) => {
           const po = Array.isArray(p.product_outlets) ? p.product_outlets[0] : p.product_outlets;
           const invList = Array.isArray(p.outlet_inventory) ? p.outlet_inventory : [];
-          // If inventory has multiple records or outlet-specific record
-          const qty = invList.reduce((sum: number, item: any) => sum + (Number(item?.quantity) || 0), 0);
+          // Only sum stock for the currently selected outlet.
+          // Previously summed all outlets, causing oversell display in multi-outlet setups.
+          const qty = invList
+            .filter((item: any) => item?.outlet_id === outletId)
+            .reduce((sum: number, item: any) => sum + (Number(item?.quantity) || 0), 0);
 
           return {
             id: p.id,
