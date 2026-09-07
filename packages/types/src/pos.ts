@@ -41,6 +41,8 @@ export interface Sale {
   cash_session_id: string | null;
   subtotal: number;
   discount_amount: number;
+  loyalty_points_redeemed: number;
+  loyalty_discount_amount: number;
   tax_amount: number;
   total_amount: number;
   status: SaleStatus;
@@ -120,4 +122,3 @@ export interface SaleRefundPayment {
   amount: number;
   created_at: string;
 }
-
