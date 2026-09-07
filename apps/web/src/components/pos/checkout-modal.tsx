@@ -200,6 +200,10 @@ export function CheckoutModal({
       // 3. Unique Idempotency Key
       const idempotencyKey = typeof crypto !== 'undefined' ? crypto.randomUUID() : `sale-${Date.now()}`;
 
+      const pointsToRedeem = useLoyaltyPoints && customer && maxRedeemablePoints > 0
+        ? maxRedeemablePoints
+        : 0;
+
       // 3b. Client-side fail-fast validation
       const validation = checkoutPosSaleSchema.safeParse({
         idempotency_key: idempotencyKey,
@@ -216,7 +220,8 @@ export function CheckoutModal({
           item_discount_amount: item.item_discount_amount || 0,
         })),
         payments: paymentsPayload,
-        discount_amount: (saleDiscount || 0) + pointsDiscountAmount,
+        discount_amount: saleDiscount || 0,
+        loyalty_points: pointsToRedeem,
         notes: notes || null,
       });
 
@@ -230,8 +235,8 @@ export function CheckoutModal({
         return;
       }
 
-      // 4. Call privileged atomic RPC
-      const { data, error: rpcErr } = await supabase.rpc('process_pos_sale', {
+      // 4. Call privileged atomic POS + Loyalty RPC
+      const { data, error: rpcErr } = await supabase.rpc('process_pos_sale_with_loyalty', {
         p_outlet_id: currentOutlet.id,
         p_idempotency_key: idempotencyKey,
         p_cashier_id: profile.id,
@@ -239,8 +244,9 @@ export function CheckoutModal({
         p_cash_session_id: activeSession.id,
         p_items: itemsPayload,
         p_payments: paymentsPayload,
-        p_discount_amount: (saleDiscount || 0) + pointsDiscountAmount,
+        p_discount_amount: saleDiscount || 0,
         p_notes: notes || null,
+        p_loyalty_points: pointsToRedeem,
       });
 
       if (rpcErr) throw rpcErr;
@@ -253,35 +259,6 @@ export function CheckoutModal({
         typeof resultData?.total_amount === 'number'
           ? resultData.total_amount
           : Number(resultData?.total_amount) || finalPayable;
-
-      // Post-Sale Loyalty Processing
-      if (customer) {
-        // A. Redeem loyalty points via hardened RPC
-        if (useLoyaltyPoints && maxRedeemablePoints > 0) {
-          const { error: redeemErr } = await supabase.rpc('redeem_loyalty_points', {
-            p_customer_id: customer.id,
-            p_outlet_id: currentOutlet.id,
-            p_sale_id: serverSaleId,
-            p_points: maxRedeemablePoints,
-            p_created_by: profile.id,
-          });
-
-          if (redeemErr) throw redeemErr;
-        }
-
-        // B. Award points on net spending
-        try {
-          await supabase.rpc('award_loyalty_points', {
-            p_customer_id: customer.id,
-            p_outlet_id: currentOutlet.id,
-            p_sale_id: serverSaleId,
-            p_net_spending: serverTotal,
-            p_created_by: profile.id,
-          });
-        } catch (awErr) {
-          console.warn('award_loyalty_points notice:', awErr);
-        }
-      }
 
       let receiptSubtotal = calculation.subtotal;
       let receiptDiscount = calculation.total_discount;
@@ -313,8 +290,10 @@ export function CheckoutModal({
         customer_name: customer?.full_name || undefined,
         customer_id: customer?.id || null,
         customer_phone: customer?.phone || null,
-        customer_tier: customer?.tier_name || null,
-        customer_points: customer?.current_loyalty_points || null,
+        customer_points:
+          typeof resultData?.new_points_balance === 'number'
+            ? resultData.new_points_balance
+            : customer?.current_loyalty_points || null,
         sold_at: receiptSoldAt,
         subtotal: receiptSubtotal,
         discount_amount: receiptDiscount,

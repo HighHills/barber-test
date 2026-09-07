@@ -37,6 +37,7 @@ export const checkoutPosSaleSchema = z.object({
   items: z.array(createSaleItemSchema).min(1, 'At least one item is required'),
   payments: z.array(createSalePaymentSchema).min(1, 'At least one payment is required'),
   discount_amount: z.number().nonnegative().default(0),
+  loyalty_points: z.number().int().nonnegative().default(0).optional(),
   discount_reason: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });

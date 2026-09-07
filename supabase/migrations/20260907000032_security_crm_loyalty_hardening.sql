@@ -134,21 +134,21 @@ BEGIN
   FOR SHARE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Sale % tidak ditemukan' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Sale % tidak ditemukan', p_sale_id USING ERRCODE = '22023';
   END IF;
 
   IF v_sale.status <> 'COMPLETED' THEN
     RAISE EXCEPTION
-      'Sale % belum berstatus COMPLETED dan tidak dapat menghasilkan loyalty points'
+      'Sale % belum berstatus COMPLETED dan tidak dapat menghasilkan loyalty points', p_sale_id
       USING ERRCODE = '22023';
   END IF;
 
   IF v_sale.customer_id IS DISTINCT FROM p_customer_id THEN
-    RAISE EXCEPTION 'Sale % bukan milik customer %' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Sale % bukan milik customer %', p_sale_id, p_customer_id USING ERRCODE = '42501';
   END IF;
 
   IF v_sale.outlet_id IS DISTINCT FROM p_outlet_id THEN
-    RAISE EXCEPTION 'Sale % bukan milik outlet %' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Sale % bukan milik outlet %', p_sale_id, p_outlet_id USING ERRCODE = '42501';
   END IF;
 
   IF p_net_spending IS NULL
@@ -182,7 +182,7 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND OR NOT v_customer.is_active THEN
-    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif', p_customer_id USING ERRCODE = '22023';
   END IF;
 
   SELECT COALESCE(ct.points_multiplier, 1.0)
@@ -297,19 +297,19 @@ BEGIN
   FOR SHARE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Sale % tidak ditemukan' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Sale % tidak ditemukan', p_sale_id USING ERRCODE = '22023';
   END IF;
 
   IF v_sale.status <> 'COMPLETED' THEN
-    RAISE EXCEPTION 'Sale % belum COMPLETED' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Sale % belum COMPLETED', p_sale_id USING ERRCODE = '22023';
   END IF;
 
   IF v_sale.customer_id IS DISTINCT FROM p_customer_id THEN
-    RAISE EXCEPTION 'Sale % bukan milik customer %' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Sale % bukan milik customer %', p_sale_id, p_customer_id USING ERRCODE = '42501';
   END IF;
 
   IF v_sale.outlet_id IS DISTINCT FROM p_outlet_id THEN
-    RAISE EXCEPTION 'Sale % bukan milik outlet %' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Sale % bukan milik outlet %', p_sale_id, p_outlet_id USING ERRCODE = '42501';
   END IF;
 
   -- Idempotency: one REDEEM event per sale.
@@ -332,12 +332,13 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND OR NOT v_customer.is_active THEN
-    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif', p_customer_id USING ERRCODE = '22023';
   END IF;
 
   IF p_points > v_customer.current_loyalty_points THEN
     RAISE EXCEPTION
-      'Saldo poin tidak mencukupi. Saldo saat ini: %, diminta: %'
+      'Saldo poin tidak mencukupi. Saldo saat ini: %, diminta: %',
+      v_customer.current_loyalty_points, p_points
       USING ERRCODE = '22023', DETAIL = 'Loyalty redemption exceeded current balance';
   END IF;
 
@@ -431,14 +432,15 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND OR NOT v_customer.is_active THEN
-    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif', p_customer_id USING ERRCODE = '22023';
   END IF;
 
   v_new_balance := v_customer.current_loyalty_points + p_points;
 
   IF v_new_balance < 0 THEN
     RAISE EXCEPTION
-      'Koreksi poin melebihi saldo customer. Saldo saat ini: %, koreksi: %'
+      'Koreksi poin melebihi saldo customer. Saldo saat ini: %, koreksi: %',
+      v_customer.current_loyalty_points, p_points
       USING ERRCODE = '22023';
   END IF;
 
@@ -534,7 +536,7 @@ BEGIN
   WHERE id = p_customer_id;
 
   IF NOT FOUND OR NOT v_customer_active THEN
-    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Customer % tidak ditemukan atau tidak aktif', p_customer_id USING ERRCODE = '22023';
   END IF;
 
   IF NOT EXISTS (
@@ -547,7 +549,8 @@ BEGIN
       AND e.is_active = TRUE
   ) THEN
     RAISE EXCEPTION
-      'Barber % tidak aktif atau tidak ditugaskan pada outlet %'
+      'Barber % tidak aktif atau tidak ditugaskan pada outlet %',
+      p_barber_id, p_outlet_id
       USING ERRCODE = '42501';
   END IF;
 

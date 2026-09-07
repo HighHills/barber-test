@@ -47,11 +47,25 @@ export async function createTestDbEnvironment(): Promise<TestDbEnvironment> {
 
   // 0. Bootstrap test-only auth mocks for PGlite
   await db.exec(`
+    DO $$ BEGIN
+      CREATE ROLE anon;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+    DO $$ BEGIN
+      CREATE ROLE authenticated;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+    DO $$ BEGIN
+      CREATE ROLE service_role;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE OR REPLACE FUNCTION auth.uid()
     RETURNS UUID AS $$
       SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::UUID;
     $$ LANGUAGE sql STABLE;
+    CREATE OR REPLACE FUNCTION validate_commission_tier_config()
+    RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;
   `);
 
   // 1. Run all 13 migrations in order
@@ -61,7 +75,12 @@ export async function createTestDbEnvironment(): Promise<TestDbEnvironment> {
   for (const f of files) {
     let sql = fs.readFileSync(path.join(migDir, f), 'utf8');
     sql = sql.replace(/CREATE EXTENSION IF NOT EXISTS "pgcrypto";/g, '-- pgcrypto builtin in modern PG');
-    await db.exec(sql);
+    try {
+      await db.exec(sql);
+    } catch (e: any) {
+      console.error('FAILED IN MIGRATION FILE:', f, e.message);
+      throw e;
+    }
   }
 
   // 2. Run seed.sql
@@ -69,15 +88,9 @@ export async function createTestDbEnvironment(): Promise<TestDbEnvironment> {
   const seedSql = fs.readFileSync(seedFile, 'utf8');
   await db.exec(seedSql);
 
-  // 3. Create non-superuser 'authenticated' role
+  // 3. Ensure sequence usage for authenticated
   await db.exec(`
-    DO $$ BEGIN
-      CREATE ROLE authenticated;
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
-    GRANT ALL ON ALL ROUTINES IN SCHEMA public TO authenticated;
-    GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
   `);
 
   // 4. Seed Outlets
