@@ -490,34 +490,21 @@ function CustomersContent(): React.JSX.Element {
     if (!selectedCustomer || !currentOutlet) return;
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('customer_haircut_history').insert({
-        customer_id: selectedCustomer.id,
-        outlet_id: currentOutlet.id,
-        barber_id: record.barber_id,
-        style_name: record.style_name,
-        clipper_guard_sides: record.clipper_guard_sides,
-        clipper_guard_top: record.clipper_guard_top,
-        styling_product_used: record.styling_product_used,
-        special_notes: record.special_notes,
-        visit_date: new Date().toISOString().split('T')[0],
+      const { error } = await supabase.rpc('add_customer_haircut_record', {
+        p_customer_id: selectedCustomer.id,
+        p_outlet_id: currentOutlet.id,
+        p_barber_id: record.barber_id,
+        p_style_name: record.style_name,
+        p_clipper_guard_sides: record.clipper_guard_sides || null,
+        p_clipper_guard_top: record.clipper_guard_top || null,
+        p_styling_product_used: record.styling_product_used || null,
+        p_special_notes: record.special_notes || null,
+        p_sale_id: null,
+        p_appointment_id: null,
+        p_created_by: profile?.id || null,
       });
 
       if (error) throw error;
-
-      // Also update customer haircut_preferences
-      await supabase
-        .from('customers')
-        .update({
-          haircut_preferences: {
-            fade_style: record.style_name,
-            clipper_guard_sides: record.clipper_guard_sides,
-            clipper_guard_top: record.clipper_guard_top,
-            styling_product: record.styling_product_used,
-            scalp_notes: record.special_notes,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedCustomer.id);
 
       setNotification({
         type: 'SUCCESS',
@@ -542,32 +529,22 @@ function CustomersContent(): React.JSX.Element {
     if (!selectedCustomer || !currentOutlet || !profile) return;
     setIsSubmitting(true);
     try {
-      const currentBal = selectedCustomer.current_loyalty_points;
-      const newBal = Math.max(0, currentBal + points);
+      const { data: updatedBalance, error: rpcErr } =
+        await supabase.rpc('adjust_customer_loyalty_points', {
+          p_customer_id: selectedCustomer.id,
+          p_outlet_id: currentOutlet.id,
+          p_points: points,
+          p_reason: reason,
+          p_created_by: profile.id,
+        });
 
-      // Insert ledger
-      const { error: lErr } = await supabase.from('customer_loyalty_ledger').insert({
-        customer_id: selectedCustomer.id,
-        outlet_id: currentOutlet.id,
-        transaction_type: 'MANUAL_ADJUSTMENT',
-        points_change: points,
-        points_balance_after: newBal,
-        notes: reason,
-        created_by: profile.id,
-      });
+      if (rpcErr) throw rpcErr;
 
-      if (lErr) throw lErr;
+      const newBal = Number(updatedBalance);
 
-      // Update customer
-      const { error: cErr } = await supabase
-        .from('customers')
-        .update({
-          current_loyalty_points: newBal,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedCustomer.id);
-
-      if (cErr) throw cErr;
+      if (!Number.isFinite(newBal)) {
+        throw new Error('RPC koreksi poin mengembalikan saldo yang tidak valid');
+      }
 
       setNotification({
         type: 'SUCCESS',

@@ -39,5 +39,7 @@ Thumbs.db
 
 # Supabase & Cache
 supabase/.temp/
+supabase/.branches/
 *.tsbuildinfo
+
 

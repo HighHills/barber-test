@@ -256,31 +256,17 @@ export function CheckoutModal({
 
       // Post-Sale Loyalty Processing
       if (customer) {
-        // A. Log point redemption if points were used
+        // A. Redeem loyalty points via hardened RPC
         if (useLoyaltyPoints && maxRedeemablePoints > 0) {
-          const newBal = Math.max(0, customer.current_loyalty_points - maxRedeemablePoints);
-          try {
-            await supabase.from('customer_loyalty_ledger').insert({
-              customer_id: customer.id,
-              outlet_id: currentOutlet.id,
-              transaction_type: 'REDEEM',
-              points_change: -maxRedeemablePoints,
-              points_balance_after: newBal,
-              sale_id: serverSaleId,
-              notes: `Penukaran ${maxRedeemablePoints} Poin untuk potongan nota ${serverInvoice}`,
-              created_by: profile.id,
-            });
+          const { error: redeemErr } = await supabase.rpc('redeem_loyalty_points', {
+            p_customer_id: customer.id,
+            p_outlet_id: currentOutlet.id,
+            p_sale_id: serverSaleId,
+            p_points: maxRedeemablePoints,
+            p_created_by: profile.id,
+          });
 
-            await supabase
-              .from('customers')
-              .update({
-                current_loyalty_points: newBal,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', customer.id);
-          } catch (redErr) {
-            console.warn('Loyalty redeem notice:', redErr);
-          }
+          if (redeemErr) throw redeemErr;
         }
 
         // B. Award points on net spending
@@ -294,15 +280,6 @@ export function CheckoutModal({
           });
         } catch (awErr) {
           console.warn('award_loyalty_points notice:', awErr);
-        }
-
-        // C. Recalculate customer tier
-        try {
-          await supabase.rpc('recalculate_customer_tier', {
-            p_customer_id: customer.id,
-          });
-        } catch (tErr) {
-          console.warn('recalculate_customer_tier notice:', tErr);
         }
       }
 
