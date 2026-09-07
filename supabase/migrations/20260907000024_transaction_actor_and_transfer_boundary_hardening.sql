@@ -42,7 +42,7 @@ BEGIN
    WHERE id = p_refund_id;
 
   IF v_refund_outlet IS NULL THEN
-    RAISE EXCEPTION 'Refund % not found' USING ERRCODE = 'P0002';
+    RAISE EXCEPTION 'Refund % not found', p_refund_id USING ERRCODE = 'P0002';
   END IF;
 
   SELECT s.outlet_id
@@ -52,11 +52,11 @@ BEGIN
    WHERE sr.id = p_refund_id;
 
   IF v_sale_outlet IS NULL THEN
-    RAISE EXCEPTION 'Sale linked to refund % not found' USING ERRCODE = 'P0002';
+    RAISE EXCEPTION 'Sale linked to refund % not found', p_refund_id USING ERRCODE = 'P0002';
   END IF;
 
   IF v_refund_outlet <> v_sale_outlet THEN
-    RAISE EXCEPTION 'Refund % outlet does not match the original sale outlet' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Refund % outlet does not match the original sale outlet', p_refund_id USING ERRCODE = '42501';
   END IF;
 
   RETURN _legacy_process_sale_refund(p_refund_id, v_actor);
@@ -126,7 +126,7 @@ BEGIN
    WHERE id = p_transfer_id;
 
   IF v_from_outlet IS NULL OR v_to_outlet IS NULL THEN
-    RAISE EXCEPTION 'Stock transfer % not found or has an invalid outlet boundary' USING ERRCODE = 'P0002';
+    RAISE EXCEPTION 'Stock transfer % not found or has an invalid outlet boundary', p_transfer_id USING ERRCODE = 'P0002';
   END IF;
 
   IF v_from_outlet = v_to_outlet THEN
@@ -137,7 +137,7 @@ BEGIN
   -- must have access to both sides of the transfer.
   IF NOT is_owner_or_admin()
      AND NOT current_user_has_outlet_access(v_to_outlet) THEN
-    RAISE EXCEPTION 'User lacks access to destination outlet %' , v_to_outlet USING ERRCODE = '42501';
+    RAISE EXCEPTION 'User lacks access to destination outlet %', v_to_outlet USING ERRCODE = '42501';
   END IF;
 
   RETURN _legacy_process_stock_transfer(p_transfer_id, v_actor);
