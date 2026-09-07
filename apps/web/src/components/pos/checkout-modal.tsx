@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { CartLineItem, CompletedSale } from '../../types/pos';
+import type { CartLineItem, CompletedSale, CustomerDetailCRM } from '../../types/pos';
 import type { CartCalculationResult } from '@barber/business-rules';
+import { checkoutPosSaleSchema } from '@barber/validators';
 import { formatCurrency } from '../../lib/formatters';
 import {
   CreditCard,
@@ -16,6 +17,8 @@ import {
   Split,
   Plus,
   Trash2,
+  Coins,
+  Crown,
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -23,6 +26,7 @@ interface CheckoutModalProps {
   calculation: CartCalculationResult;
   saleDiscount: number;
   notes: string;
+  customer?: CustomerDetailCRM | null;
   onSuccess: (completedSale: CompletedSale) => void;
   onClose: () => void;
 }
@@ -38,12 +42,19 @@ export function CheckoutModal({
   calculation,
   saleDiscount,
   notes,
+  customer,
   onSuccess,
   onClose,
 }: CheckoutModalProps): React.JSX.Element {
   const { supabase, currentOutlet, profile, activeSession, paymentMethods } = usePos();
 
-  const totalAmount = calculation.total_amount;
+  // Loyalty points redemption
+  const [useLoyaltyPoints, setUseLoyaltyPoints] = useState<boolean>(false);
+  const maxRedeemablePoints = customer
+    ? Math.min(customer.current_loyalty_points, Math.floor(calculation.total_amount / 100))
+    : 0;
+  const pointsDiscountAmount = useLoyaltyPoints ? maxRedeemablePoints * 100 : 0;
+  const finalPayable = Math.max(0, calculation.total_amount - pointsDiscountAmount);
 
   // Single vs Split Payment Mode
   const [isSplitMode, setIsSplitMode] = useState<boolean>(false);
@@ -51,18 +62,18 @@ export function CheckoutModal({
   // Single Mode State
   const defaultMethod = paymentMethods.find((p) => p.type === 'CASH') || paymentMethods[0];
   const [selectedMethodId, setSelectedMethodId] = useState<string>(defaultMethod?.id || '');
-  const [tenderedCash, setTenderedCash] = useState<number>(totalAmount);
+  const [tenderedCash, setTenderedCash] = useState<number>(finalPayable);
   const [referenceNumber, setReferenceNumber] = useState<string>('');
 
   // Split Mode State
   const [splitRows, setSplitRows] = useState<SplitPaymentRow[]>([
     {
       method_id: defaultMethod?.id || '',
-      amount: Math.floor(totalAmount / 2),
+      amount: Math.floor(finalPayable / 2),
     },
     {
       method_id: paymentMethods.find((p) => p.id !== defaultMethod?.id)?.id || defaultMethod?.id || '',
-      amount: totalAmount - Math.floor(totalAmount / 2),
+      amount: finalPayable - Math.floor(finalPayable / 2),
     },
   ]);
 
@@ -70,30 +81,66 @@ export function CheckoutModal({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Sync defaults when paymentMethods load async after mount.
+  useEffect(() => {
+    if (paymentMethods.length === 0) return;
+    const fallback = paymentMethods.find((p) => p.type === 'CASH') || paymentMethods[0];
+    if (!fallback) return;
+    setSelectedMethodId((prev) => {
+      if (prev && paymentMethods.some((p) => p.id === prev)) return prev;
+      return fallback.id;
+    });
+    setSplitRows((prev) => {
+      const allValid = prev.length > 0 && prev.every((r) => paymentMethods.some((p) => p.id === r.method_id));
+      if (allValid) return prev;
+      const second = paymentMethods.find((p) => p.id !== fallback.id) || fallback;
+      return [
+        { method_id: fallback.id, amount: Math.floor(finalPayable / 2) },
+        { method_id: second.id, amount: finalPayable - Math.floor(finalPayable / 2) },
+      ];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethods]);
+
+  // Keep cash tendered in sync if bill total changes or points are redeemed
+  useEffect(() => {
+    setTenderedCash(finalPayable);
+    setSplitRows((prev) => {
+      if (prev.length === 2) {
+        const half = Math.floor(finalPayable / 2);
+        return [
+          { ...prev[0], amount: half },
+          { ...prev[1], amount: finalPayable - half },
+        ];
+      }
+      return prev;
+    });
+  }, [finalPayable]);
+
   const selectedMethod = paymentMethods.find((m) => m.id === selectedMethodId);
   const isCash = selectedMethod?.type === 'CASH';
 
   // Calculate change for cash
-  const changeAmount = isCash ? Math.max(0, tenderedCash - totalAmount) : 0;
+  const changeAmount = isCash ? Math.max(0, tenderedCash - finalPayable) : 0;
 
   // Split calculations
   const splitTotal = useMemo(
     () => splitRows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0),
     [splitRows]
   );
-  const splitRemaining = totalAmount - splitTotal;
+  const splitRemaining = finalPayable - splitTotal;
 
   // Quick cash buttons
   const quickCashOptions = useMemo(() => {
-    const opts = [totalAmount];
+    const opts = [finalPayable];
     const presets = [50000, 100000, 150000, 200000, 500000];
     presets.forEach((p) => {
-      if (p > totalAmount && !opts.includes(p)) {
+      if (p > finalPayable && !opts.includes(p)) {
         opts.push(p);
       }
     });
     return opts.slice(0, 5);
-  }, [totalAmount]);
+  }, [finalPayable]);
 
   // Execute Sale Transaction via Supabase RPC
   const handleProcessSale = async () => {
@@ -102,8 +149,8 @@ export function CheckoutModal({
       return;
     }
 
-    if (isCash && tenderedCash < totalAmount) {
-      setErrorMessage(`Uang tunai yang diterima (${formatCurrency(tenderedCash)}) kurang dari total tagihan (${formatCurrency(totalAmount)})`);
+    if (isCash && tenderedCash < finalPayable) {
+      setErrorMessage(`Uang tunai yang diterima (${formatCurrency(tenderedCash)}) kurang dari total tagihan (${formatCurrency(finalPayable)})`);
       return;
     }
 
@@ -138,7 +185,7 @@ export function CheckoutModal({
         paymentsPayload = [
           {
             payment_method_id: selectedMethodId,
-            amount: totalAmount, // Exact bill amount recorded in ledger
+            amount: finalPayable, // Exact bill amount recorded in ledger
             reference_number: isCash ? null : referenceNumber || null,
           },
         ];
@@ -153,16 +200,46 @@ export function CheckoutModal({
       // 3. Unique Idempotency Key
       const idempotencyKey = typeof crypto !== 'undefined' ? crypto.randomUUID() : `sale-${Date.now()}`;
 
+      // 3b. Client-side fail-fast validation
+      const validation = checkoutPosSaleSchema.safeParse({
+        idempotency_key: idempotencyKey,
+        outlet_id: currentOutlet.id,
+        cash_session_id: activeSession.id,
+        customer_id: customer ? customer.id : null,
+        items: items.map((item) => ({
+          item_type: item.item_type,
+          service_id: item.service_id || null,
+          product_id: item.product_id || null,
+          barber_id: item.barber_id || null,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          item_discount_amount: item.item_discount_amount || 0,
+        })),
+        payments: paymentsPayload,
+        discount_amount: (saleDiscount || 0) + pointsDiscountAmount,
+        notes: notes || null,
+      });
+
+      if (!validation.success) {
+        const firstIssue = validation.error.issues[0];
+        setErrorMessage(
+          firstIssue
+            ? `Data checkout tidak valid: ${firstIssue.path.join('.') || 'form'} — ${firstIssue.message}`
+            : 'Data checkout tidak valid. Periksa kembali item dan pembayaran.'
+        );
+        return;
+      }
+
       // 4. Call privileged atomic RPC
       const { data, error: rpcErr } = await supabase.rpc('process_pos_sale', {
         p_outlet_id: currentOutlet.id,
         p_idempotency_key: idempotencyKey,
         p_cashier_id: profile.id,
-        p_customer_id: null,
+        p_customer_id: customer ? customer.id : null,
         p_cash_session_id: activeSession.id,
         p_items: itemsPayload,
         p_payments: paymentsPayload,
-        p_discount_amount: saleDiscount || 0,
+        p_discount_amount: (saleDiscount || 0) + pointsDiscountAmount,
         p_notes: notes || null,
       });
 
@@ -170,19 +247,104 @@ export function CheckoutModal({
 
       // 5. Package Completed Sale for Receipt Preview
       const resultData = data as any;
+      const serverSaleId: string = resultData?.sale_id || idempotencyKey;
+      const serverInvoice: string = resultData?.invoice_number || `INV-${Date.now()}`;
+      const serverTotal: number =
+        typeof resultData?.total_amount === 'number'
+          ? resultData.total_amount
+          : Number(resultData?.total_amount) || finalPayable;
+
+      // Post-Sale Loyalty Processing
+      if (customer) {
+        // A. Log point redemption if points were used
+        if (useLoyaltyPoints && maxRedeemablePoints > 0) {
+          const newBal = Math.max(0, customer.current_loyalty_points - maxRedeemablePoints);
+          try {
+            await supabase.from('customer_loyalty_ledger').insert({
+              customer_id: customer.id,
+              outlet_id: currentOutlet.id,
+              transaction_type: 'REDEEM',
+              points_change: -maxRedeemablePoints,
+              points_balance_after: newBal,
+              sale_id: serverSaleId,
+              notes: `Penukaran ${maxRedeemablePoints} Poin untuk potongan nota ${serverInvoice}`,
+              created_by: profile.id,
+            });
+
+            await supabase
+              .from('customers')
+              .update({
+                current_loyalty_points: newBal,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', customer.id);
+          } catch (redErr) {
+            console.warn('Loyalty redeem notice:', redErr);
+          }
+        }
+
+        // B. Award points on net spending
+        try {
+          await supabase.rpc('award_loyalty_points', {
+            p_customer_id: customer.id,
+            p_outlet_id: currentOutlet.id,
+            p_sale_id: serverSaleId,
+            p_net_spending: serverTotal,
+            p_created_by: profile.id,
+          });
+        } catch (awErr) {
+          console.warn('award_loyalty_points notice:', awErr);
+        }
+
+        // C. Recalculate customer tier
+        try {
+          await supabase.rpc('recalculate_customer_tier', {
+            p_customer_id: customer.id,
+          });
+        } catch (tErr) {
+          console.warn('recalculate_customer_tier notice:', tErr);
+        }
+      }
+
+      let receiptSubtotal = calculation.subtotal;
+      let receiptDiscount = calculation.total_discount;
+      let receiptTax = calculation.tax_amount;
+      let receiptTotal = serverTotal;
+      let receiptSoldAt = new Date().toISOString();
+
+      const { data: serverSale } = await supabase
+        .from('sales')
+        .select('invoice_number, subtotal, discount_amount, tax_amount, total_amount, sold_at')
+        .eq('id', serverSaleId)
+        .maybeSingle();
+
+      if (serverSale) {
+        receiptSubtotal = Number(serverSale.subtotal) || receiptSubtotal;
+        receiptDiscount = Number(serverSale.discount_amount) || 0;
+        receiptTax = Number(serverSale.tax_amount) || 0;
+        receiptTotal = Number(serverSale.total_amount) || receiptTotal;
+        receiptSoldAt = serverSale.sold_at || receiptSoldAt;
+      }
+
+      const receiptChange = isCash ? Math.max(0, tenderedCash - receiptTotal) : 0;
       const completedSale: CompletedSale = {
-        id: resultData?.sale_id || idempotencyKey,
-        invoice_number: resultData?.invoice_number || `INV-${Date.now()}`,
+        id: serverSaleId,
+        invoice_number: (serverSale as any)?.invoice_number || serverInvoice,
         outlet_id: currentOutlet.id,
         outlet_name: currentOutlet.name,
         cashier_name: profile.display_name,
-        sold_at: new Date().toISOString(),
-        subtotal: calculation.subtotal,
-        discount_amount: calculation.total_discount,
-        tax_amount: calculation.tax_amount,
-        total_amount: totalAmount,
-        tendered_amount: isCash ? tenderedCash : totalAmount,
-        change_amount: isCash ? changeAmount : 0,
+        customer_name: customer?.full_name || undefined,
+        customer_id: customer?.id || null,
+        customer_phone: customer?.phone || null,
+        customer_tier: customer?.tier_name || null,
+        customer_points: customer?.current_loyalty_points || null,
+        sold_at: receiptSoldAt,
+        subtotal: receiptSubtotal,
+        discount_amount: receiptDiscount,
+        tax_amount: receiptTax,
+        total_amount: receiptTotal,
+        tendered_amount: isCash ? tenderedCash : receiptTotal,
+        change_amount: isCash ? receiptChange : 0,
         items: items.map((i) => ({
           description: i.description_snapshot,
           quantity: i.quantity,
@@ -239,8 +401,13 @@ export function CheckoutModal({
             Total Harus Dibayar
           </span>
           <span className="text-3xl font-extrabold text-amber-400 font-mono">
-            {formatCurrency(totalAmount)}
+            {formatCurrency(finalPayable)}
           </span>
+          {pointsDiscountAmount > 0 && (
+            <div className="text-[11px] text-emerald-400 font-semibold mt-1">
+              (Hemat {formatCurrency(pointsDiscountAmount)} dari {maxRedeemablePoints} Poin Loyalitas)
+            </div>
+          )}
         </div>
 
         {/* Content Body */}
@@ -249,6 +416,54 @@ export function CheckoutModal({
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Member & Loyalty Points Redemption Card */}
+          {customer && (
+            <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-7 h-7 rounded-xl flex items-center justify-center font-black text-[10px] text-white shadow-2xs"
+                    style={{ backgroundColor: customer.tier_color || '#f59e0b' }}
+                  >
+                    <Crown className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900">{customer.full_name}</span>
+                    <span
+                      className="ml-1.5 text-[9px] font-black px-1.5 py-0.2 rounded-full text-white"
+                      style={{ backgroundColor: customer.tier_color || '#f59e0b' }}
+                    >
+                      {customer.tier_name || 'Member'}
+                    </span>
+                  </div>
+                </div>
+                <div className="font-mono font-bold text-emerald-700 flex items-center gap-1">
+                  <Coins className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{customer.current_loyalty_points.toLocaleString('id-ID')} Pts Tersedia</span>
+                </div>
+              </div>
+
+              {customer.current_loyalty_points > 0 && maxRedeemablePoints > 0 && (
+                <div className="pt-2 border-t border-amber-200/70 flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer text-amber-950 font-bold">
+                    <input
+                      type="checkbox"
+                      checked={useLoyaltyPoints}
+                      onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span>Tukarkan {maxRedeemablePoints} Poin (Potongan {formatCurrency(pointsDiscountAmount)})</span>
+                  </label>
+                  {useLoyaltyPoints && (
+                    <span className="font-mono font-black text-emerald-600">
+                      -{formatCurrency(pointsDiscountAmount)}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -348,7 +563,7 @@ export function CheckoutModal({
                             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                         }`}
                       >
-                        {amount === totalAmount ? 'Uang Pas' : formatCurrency(amount)}
+                        {amount === finalPayable ? 'Uang Pas' : formatCurrency(amount)}
                       </button>
                     ))}
                   </div>
@@ -358,11 +573,11 @@ export function CheckoutModal({
                     <span className="text-xs font-bold text-slate-600">Uang Kembalian:</span>
                     <span
                       className={`text-base font-extrabold font-mono ${
-                        tenderedCash < totalAmount ? 'text-red-600' : 'text-emerald-600'
+                        tenderedCash < finalPayable ? 'text-red-600' : 'text-emerald-600'
                       }`}
                     >
-                      {tenderedCash < totalAmount
-                        ? `Kurang ${formatCurrency(totalAmount - tenderedCash)}`
+                      {tenderedCash < finalPayable
+                        ? `Kurang ${formatCurrency(finalPayable - tenderedCash)}`
                         : formatCurrency(changeAmount)}
                     </span>
                   </div>
@@ -483,7 +698,7 @@ export function CheckoutModal({
           </button>
           <button
             onClick={handleProcessSale}
-            disabled={isSubmitting || (isCash && tenderedCash < totalAmount) || (isSplitMode && Math.abs(splitRemaining) > 0.01)}
+            disabled={isSubmitting || (isCash && tenderedCash < finalPayable) || (isSplitMode && Math.abs(splitRemaining) > 0.01)}
             className="px-6 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl shadow-md transition-all flex items-center gap-2"
           >
             {isSubmitting ? (

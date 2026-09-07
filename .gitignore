@@ -36,3 +36,8 @@ Thumbs.db
 
 # Turbo
 .turbo
+
+# Supabase & Cache
+supabase/.temp/
+*.tsbuildinfo
+

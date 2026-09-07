@@ -112,3 +112,12 @@ export interface SaleRefundItem {
   return_to_inventory: boolean;
   reason: string | null;
 }
+
+export interface SaleRefundPayment {
+  id: string;
+  refund_id: string;
+  payment_method_id: string;
+  amount: number;
+  created_at: string;
+}
+

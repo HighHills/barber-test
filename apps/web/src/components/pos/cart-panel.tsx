@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { CartLineItem } from '../../types/pos';
+import type { CartLineItem, CustomerDetailCRM } from '../../types/pos';
 import type { CartCalculationResult } from '@barber/business-rules';
 import { formatCurrency } from '../../lib/formatters';
 import {
@@ -14,6 +14,9 @@ import {
   Tag,
   CreditCard,
   Lock,
+  UserPlus,
+  Coins,
+  X,
 } from 'lucide-react';
 
 interface CartPanelProps {
@@ -21,6 +24,9 @@ interface CartPanelProps {
   calculation: CartCalculationResult;
   saleDiscount: number;
   notes: string;
+  customer?: CustomerDetailCRM | null;
+  onOpenCustomerPicker: () => void;
+  onClearCustomer: () => void;
   onUpdateQuantity: (id: string, qty: number) => void;
   onUpdateItemDiscount: (id: string, discount: number) => void;
   onRemoveItem: (id: string) => void;
@@ -36,6 +42,9 @@ export function CartPanel({
   calculation,
   saleDiscount,
   notes,
+  customer,
+  onOpenCustomerPicker,
+  onClearCustomer,
   onUpdateQuantity,
   onUpdateItemDiscount,
   onRemoveItem,
@@ -73,6 +82,55 @@ export function CartPanel({
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Kosongkan</span>
+          </button>
+        )}
+      </div>
+
+      {/* Customer / Member Selector Bar */}
+      <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs">
+        {customer ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center font-black text-[10px] text-white shadow-2xs shrink-0"
+                style={{ backgroundColor: customer.tier_color || '#64748b' }}
+              >
+                {customer.full_name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-slate-900 truncate">
+                    {customer.full_name}
+                  </span>
+                  <span
+                    className="text-[9px] font-black px-1.5 py-0.2 rounded-full text-white shrink-0"
+                    style={{ backgroundColor: customer.tier_color || '#64748b' }}
+                  >
+                    {customer.tier_name || 'Member'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                  <Coins className="w-3 h-3" />
+                  <span>{customer.current_loyalty_points.toLocaleString('id-ID')} Pts Tersedia</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={onClearCustomer}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
+              title="Ganti ke Tamu Umum"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onOpenCustomerPicker}
+            className="w-full py-1 rounded-lg border border-dashed border-amber-300 hover:border-amber-400 bg-amber-50/50 hover:bg-amber-50 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-amber-600" />
+            <span>Pilih Pelanggan / Member (Diskon & Poin)</span>
           </button>
         )}
       </div>

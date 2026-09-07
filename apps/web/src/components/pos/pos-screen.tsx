@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import { usePosCart } from '../../hooks/use-pos-cart';
-import type { CatalogItem, BarberEmployee, CompletedSale } from '../../types/pos';
+import type { CatalogItem, BarberEmployee, CompletedSale, CustomerDetailCRM, CustomerTierView } from '../../types/pos';
 import { PosHeader } from './pos-header';
 import { CatalogGrid } from './catalog-grid';
 import { CartPanel } from './cart-panel';
@@ -11,18 +11,99 @@ import { BarberSelectModal } from './barber-select-modal';
 import { CheckoutModal } from './checkout-modal';
 import { ReceiptModal } from './receipt-modal';
 import { CashSessionModal } from './cash-session-modal';
+import { CustomerSelectModal } from './customer-select-modal';
+import { CustomerFormModal } from '../crm/customer-form-modal';
 import { LoginDialog } from '../auth/login-dialog';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle2, X } from 'lucide-react';
 
 export function PosScreen(): React.JSX.Element {
-  const { user, isLoading, businessSettings, availableOutlets, refreshData } = usePos();
+  const { user, supabase, currentOutlet, isLoading, businessSettings, availableOutlets, refreshData } = usePos();
   const cart = usePosCart(businessSettings);
 
-  // Modals state
+  // Modals & Customer state
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetailCRM | null>(null);
+  const [isCustomerPickerOpen, setIsCustomerPickerOpen] = useState<boolean>(false);
+  const [isCustomerFormOpen, setIsCustomerFormOpen] = useState<boolean>(false);
+  const [tiers, setTiers] = useState<CustomerTierView[]>([]);
+  const [barbers, setBarbers] = useState<Array<{ id: string; full_name: string }>>([]);
+
   const [selectedService, setSelectedService] = useState<CatalogItem | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const [sessionModalMode, setSessionModalMode] = useState<'OPEN' | 'CLOSE' | null>(null);
+  const [queueHandOffNotice, setQueueHandOffNotice] = useState<string | null>(null);
+
+  // Load tiers & barbers
+  useEffect(() => {
+    const loadMetadata = async () => {
+      try {
+        const { data: tData } = await supabase
+          .from('customer_tiers')
+          .select('*')
+          .order('min_spending', { ascending: true });
+        if (tData) {
+          setTiers(
+            tData.map((t: any) => ({
+              id: t.id,
+              code: t.code,
+              name: t.name,
+              min_spending: Number(t.min_spending) || 0,
+              min_visits: Number(t.min_visits) || 0,
+              discount_percent_service: Number(t.discount_percent_service) || 0,
+              discount_percent_product: Number(t.discount_percent_product) || 0,
+              points_multiplier: Number(t.points_multiplier) || 1.0,
+              color_hex: t.color_hex || '#94a3b8',
+              badge_icon: t.badge_icon || 'Award',
+              is_active: t.is_active,
+            }))
+          );
+        }
+
+        if (currentOutlet) {
+          const { data: bData } = await supabase
+            .from('employees')
+            .select('id, full_name')
+            .eq('outlet_id', currentOutlet.id)
+            .eq('is_active', true)
+            .order('full_name');
+          if (bData) setBarbers(bData);
+        }
+      } catch (err) {
+        console.error('Error loading POS metadata:', err);
+      }
+    };
+
+    loadMetadata();
+  }, [supabase, currentOutlet]);
+
+  // Check for pending queue checkout hand-off from /queue
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('pending_queue_checkout');
+      if (stored) {
+        const payload = JSON.parse(stored);
+        sessionStorage.removeItem('pending_queue_checkout');
+
+        if (payload.service_id) {
+          cart.addItem({
+            item_type: 'SERVICE',
+            service_id: payload.service_id,
+            barber_id: payload.barber_id || undefined,
+            barber_name: payload.barber_name || undefined,
+            description_snapshot: payload.service_name || 'Layanan Pangkas',
+            quantity: 1,
+            unit_price: Number(payload.service_price) || 0,
+            item_discount_amount: 0,
+          });
+          setQueueHandOffNotice(
+            `Antrean #${payload.queue_number} (${payload.customer_name || 'Tamu'}) dengan kapster ${payload.barber_name || '-'} berhasil dimuat ke nota kasir siap bayar.`
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('Queue handoff parse error:', err);
+    }
+  }, [cart]);
 
   // 1. Loading State
   if (isLoading) {
@@ -87,6 +168,22 @@ export function PosScreen(): React.JSX.Element {
         onCloseSessionClick={() => setSessionModalMode('CLOSE')}
       />
 
+      {/* Queue Hand-off Success Banner */}
+      {queueHandOffNotice && (
+        <div className="bg-emerald-600 text-white px-4 py-2.5 text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-amber-300 shrink-0" />
+            <span className="font-semibold">{queueHandOffNotice}</span>
+          </div>
+          <button
+            onClick={() => setQueueHandOffNotice(null)}
+            className="text-white/80 hover:text-white p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Warning banner if no outlets found */}
       {availableOutlets.length === 0 && (
         <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-amber-600 font-medium">
@@ -122,6 +219,9 @@ export function PosScreen(): React.JSX.Element {
             calculation={cart.calculation}
             saleDiscount={cart.saleDiscount}
             notes={cart.notes}
+            customer={selectedCustomer}
+            onOpenCustomerPicker={() => setIsCustomerPickerOpen(true)}
+            onClearCustomer={() => setSelectedCustomer(null)}
             onUpdateQuantity={cart.updateQuantity}
             onUpdateItemDiscount={cart.updateItemDiscount}
             onRemoveItem={cart.removeItem}
@@ -151,6 +251,7 @@ export function PosScreen(): React.JSX.Element {
           calculation={cart.calculation}
           saleDiscount={cart.saleDiscount}
           notes={cart.notes}
+          customer={selectedCustomer}
           onSuccess={handleCheckoutSuccess}
           onClose={() => setIsCheckoutOpen(false)}
         />
@@ -170,6 +271,86 @@ export function PosScreen(): React.JSX.Element {
         <CashSessionModal
           mode={sessionModalMode}
           onClose={() => setSessionModalMode(null)}
+        />
+      )}
+
+      {/* 5. Customer Select Modal */}
+      <CustomerSelectModal
+        isOpen={isCustomerPickerOpen}
+        selectedCustomerId={selectedCustomer?.id}
+        onSelectCustomer={(cust) => {
+          setSelectedCustomer(cust);
+          if (cust && cust.tier_discount_service && cust.tier_discount_service > 0) {
+            setQueueHandOffNotice(
+              `Member ${cust.full_name} (${cust.tier_name}) aktif: Diskon Jasa ${cust.tier_discount_service}% diterapkan!`
+            );
+          }
+        }}
+        onClose={() => setIsCustomerPickerOpen(false)}
+        onOpenCreateModal={() => setIsCustomerFormOpen(true)}
+      />
+
+      {/* 6. Customer Form Modal */}
+      {isCustomerFormOpen && (
+        <CustomerFormModal
+          tiers={tiers}
+          barbers={barbers}
+          onClose={() => setIsCustomerFormOpen(false)}
+          onSubmit={async (formData) => {
+            const customerCode = `CUST-${Math.floor(100000 + Math.random() * 900000)}`;
+            const defaultTier = tiers.find((t) => t.code === 'BRONZE') || tiers[0];
+            const { data: newCust, error } = await supabase
+              .from('customers')
+              .insert({
+                customer_code: customerCode,
+                full_name: formData.full_name,
+                phone: formData.phone,
+                email: formData.email || null,
+                gender: formData.gender || null,
+                date_of_birth: formData.date_of_birth || null,
+                tier_id: formData.tier_id || defaultTier?.id || null,
+                preferred_barber_id: formData.preferred_barber_id || null,
+                haircut_preferences: formData.haircut_preferences || {},
+                current_loyalty_points: 0,
+                lifetime_loyalty_points: 0,
+              })
+              .select('*')
+              .single();
+
+            if (error) {
+              alert('Gagal mendaftarkan pelanggan: ' + error.message);
+              return;
+            }
+
+            if (newCust) {
+              const tierObj = tiers.find((t) => t.id === newCust.tier_id) || defaultTier;
+              setSelectedCustomer({
+                id: newCust.id,
+                customer_code: newCust.customer_code,
+                full_name: newCust.full_name,
+                phone: newCust.phone,
+                email: newCust.email,
+                gender: newCust.gender,
+                date_of_birth: newCust.date_of_birth,
+                tier_id: newCust.tier_id,
+                tier_code: tierObj?.code || 'BRONZE',
+                tier_name: tierObj?.name || 'Bronze Member',
+                tier_color: tierObj?.color_hex || '#94a3b8',
+                tier_discount_service: Number(tierObj?.discount_percent_service) || 0,
+                tier_discount_product: Number(tierObj?.discount_percent_product) || 0,
+                current_loyalty_points: 0,
+                lifetime_loyalty_points: 0,
+                preferred_barber_id: newCust.preferred_barber_id,
+                haircut_preferences: newCust.haircut_preferences,
+                total_visits: 0,
+                total_spending: 0,
+                created_at: newCust.created_at,
+              });
+              setIsCustomerFormOpen(false);
+              setQueueHandOffNotice(`Pelanggan baru ${newCust.full_name} berhasil didaftarkan dan dipilih!`);
+            }
+          }}
+          isSubmitting={false}
         />
       )}
     </div>

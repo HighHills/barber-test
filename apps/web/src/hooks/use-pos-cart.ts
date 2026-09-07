@@ -7,7 +7,8 @@ import type { CartLineItem, BusinessSettings } from '../types/pos';
 export function usePosCart(settings: BusinessSettings) {
   const [items, setItems] = useState<CartLineItem[]>([]);
   const [saleDiscount, setSaleDiscount] = useState<number>(0);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  // NOTE: customer assignment belum ada UI-nya — checkout selalu guest (p_customer_id: null).
+  // Jangan tambah selectedCustomerId di sini sampai customer picker dibangun.
   const [notes, setNotes] = useState<string>('');
 
   // Add Item to Cart
@@ -102,7 +103,6 @@ export function usePosCart(settings: BusinessSettings) {
   const clearCart = useCallback(() => {
     setItems([]);
     setSaleDiscount(0);
-    setSelectedCustomerId(null);
     setNotes('');
   }, []);
 
@@ -132,7 +132,6 @@ export function usePosCart(settings: BusinessSettings) {
   return {
     items,
     saleDiscount,
-    selectedCustomerId,
     notes,
     calculation,
     itemCount: items.reduce((acc, i) => acc + i.quantity, 0),
@@ -142,7 +141,6 @@ export function usePosCart(settings: BusinessSettings) {
     updateItemDiscount,
     updateItemBarber,
     setSaleDiscount,
-    setSelectedCustomerId,
     setNotes,
     clearCart,
   };

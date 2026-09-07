@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '../lib/supabase/client';
 import type {
@@ -26,6 +26,12 @@ interface PosContextType {
   paymentMethods: PaymentMethod[];
   isLoading: boolean;
   error: string | null;
+  roleCode: string;
+  isCashier: boolean;
+  isOwner: boolean;
+  assignedOutletId: string | null;
+  simulatedRole: string | null;
+  simulateRole: (role: string | null, outletId?: string | null) => void;
   setCurrentOutlet: (outlet: Outlet) => void;
   openSession: (openingBalance: number) => Promise<{ success: boolean; error?: string }>;
   closeSession: (closingBalance: number) => Promise<{ success: boolean; error?: string }>;
@@ -58,6 +64,11 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedInitial = useRef<boolean>(false);
+
+  // Role simulation & RBAC states
+  const [simulatedRole, setSimulatedRole] = useState<string | null>(null);
+  const [simulatedOutletId, setSimulatedOutletId] = useState<string | null>(null);
 
   // 1. Initial auth listener & user session loading
   useEffect(() => {
@@ -69,7 +80,10 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
         if (sessionErr) throw sessionErr;
 
         if (isMounted) {
-          setUser(session?.user ?? null);
+          setUser((prev) => {
+            if (prev?.id === session?.user?.id) return prev;
+            return session?.user ?? null;
+          });
         }
       } catch (err: unknown) {
         console.error('Auth session error:', err);
@@ -83,7 +97,11 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (isMounted) {
-        setUser(session?.user ?? null);
+        setUser((prev) => {
+          // Keep identical reference if user ID is unchanged to prevent window-focus unmount/flicker
+          if (prev?.id === session?.user?.id) return prev;
+          return session?.user ?? null;
+        });
       }
     });
 
@@ -102,10 +120,14 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       setActiveSession(null);
       setCashRegister(null);
       setIsLoading(false);
+      hasLoadedInitial.current = false;
       return;
     }
 
-    setIsLoading(true);
+    // Only show full-screen blocking loader on initial cold start
+    if (!hasLoadedInitial.current) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -120,20 +142,51 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
         console.warn('Profile fetch note:', profileErr.message);
       }
 
-      const activeProfile: CashierProfile = profileData
-        ? {
-            id: profileData.id,
-            auth_user_id: profileData.auth_user_id,
-            display_name: profileData.display_name,
-            phone: profileData.phone,
-            employee_id: profileData.employee_id,
+      // No synthetic fallback: a missing profile must block transactions explicitly.
+      // Using user.id as profile.id would cause FK/permission failures later with confusing messages.
+      if (!profileData) {
+        setProfile(null);
+        setError(
+          'Akun login belum terhubung ke tabel profiles. Minta OWNER untuk menjalankan supabase/seed_operational_data.sql atau mapping user ke profile.'
+        );
+      } else {
+        // Query user role and assigned outlet
+        let userRoleCode = 'OWNER';
+        let userRoleName = 'Business Owner';
+        let userAssignedOutletId: string | null = null;
+
+        try {
+          const { data: userRolesData, error: urErr } = await supabase
+            .from('user_roles')
+            .select('outlet_id, roles(id, code, name)')
+            .eq('user_id', profileData.id);
+
+          if (!urErr && userRolesData && userRolesData.length > 0) {
+            // Find CASHIER role first, or use first assigned role
+            const cashierRole = userRolesData.find((ur: any) => ur.roles?.code === 'CASHIER');
+            const primary = cashierRole || userRolesData[0];
+            if (primary && primary.roles) {
+              userRoleCode = (primary.roles as any).code || 'OWNER';
+              userRoleName = (primary.roles as any).name || 'Business Owner';
+              userAssignedOutletId = primary.outlet_id;
+            }
           }
-        : {
-            id: user.id,
-            auth_user_id: user.id,
-            display_name: user.email?.split('@')[0] || 'Kasir',
-          };
-      setProfile(activeProfile);
+        } catch (roleCatchErr) {
+          console.warn('User roles fetch error:', roleCatchErr);
+        }
+
+        const activeProfile: CashierProfile = {
+          id: profileData.id,
+          auth_user_id: profileData.auth_user_id,
+          display_name: profileData.display_name,
+          phone: profileData.phone,
+          employee_id: profileData.employee_id,
+          role_code: userRoleCode,
+          role_name: userRoleName,
+          assigned_outlet_id: userAssignedOutletId,
+        };
+        setProfile(activeProfile);
+      }
 
       // 2.2 Fetch business settings
       const { data: settingsData } = await supabase
@@ -206,6 +259,7 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan memuat data POS');
     } finally {
       setIsLoading(false);
+      hasLoadedInitial.current = true;
     }
   }, [user, supabase, currentOutlet]);
 
@@ -282,7 +336,34 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
     refreshData();
   }, [user]);
 
+  // RBAC & Sub-Account properties
+  const effectiveRoleCode = simulatedRole || profile?.role_code || 'OWNER';
+  const isCashier = effectiveRoleCode === 'CASHIER';
+  const isOwner = effectiveRoleCode === 'OWNER' || effectiveRoleCode === 'ADMIN';
+  const effectiveAssignedOutletId = isCashier
+    ? (simulatedOutletId || profile?.assigned_outlet_id || null)
+    : null;
+
+  const simulateRole = (role: string | null, outletId?: string | null) => {
+    setSimulatedRole(role);
+    setSimulatedOutletId(outletId ?? null);
+    if (role === 'CASHIER') {
+      const targetId = outletId || profile?.assigned_outlet_id || availableOutlets[0]?.id;
+      if (targetId) {
+        const target = availableOutlets.find((o) => o.id === targetId);
+        if (target) {
+          setCurrentOutletState(target);
+          loadRegisterAndSession(target.id);
+        }
+      }
+    }
+  };
+
   const setCurrentOutlet = (outlet: Outlet) => {
+    if (isCashier && effectiveAssignedOutletId && outlet.id !== effectiveAssignedOutletId) {
+      console.warn('Outlet dikunci pada cabang penugasan kasir:', effectiveAssignedOutletId);
+      return;
+    }
     setCurrentOutletState(outlet);
     loadRegisterAndSession(outlet.id);
   };
@@ -354,6 +435,8 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
     setUser(null);
     setProfile(null);
     setActiveSession(null);
+    setSimulatedRole(null);
+    setSimulatedOutletId(null);
   };
 
   return (
@@ -371,6 +454,12 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
         paymentMethods,
         isLoading,
         error,
+        roleCode: effectiveRoleCode,
+        isCashier,
+        isOwner,
+        assignedOutletId: effectiveAssignedOutletId,
+        simulatedRole,
+        simulateRole,
         setCurrentOutlet,
         openSession,
         closeSession,
