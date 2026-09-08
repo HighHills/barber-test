@@ -8,6 +8,7 @@ import {
   Search,
   Plus,
   Eye,
+  Pencil,
   Crown,
   Sparkles,
   Phone,
@@ -28,7 +29,7 @@ export function CustomerCrmTable({
   customers,
   tiers,
   onViewCustomer,
-  onEditCustomer: _onEditCustomer,
+  onEditCustomer,
   onAddNewCustomer,
   isLoading,
 }: CustomerCrmTableProps): React.JSX.Element {
@@ -337,13 +338,24 @@ export function CustomerCrmTable({
 
                       {/* Actions */}
                       <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => onViewCustomer(c)}
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Profil 360°</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onViewCustomer(c)}
+                            title="Lihat detail customer"
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Lihat Detail</span>
+                          </button>
+                          <button
+                            onClick={() => onEditCustomer(c)}
+                            title="Edit data customer"
+                            className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
