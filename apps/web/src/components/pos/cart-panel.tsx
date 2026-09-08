@@ -218,14 +218,19 @@ export function CartPanel({
 
                   {/* Line Total */}
                   <div className="text-right">
-                    {item.item_discount_amount > 0 && (
-                      <div className="text-[10px] text-red-500 line-through">
+                    {(item.item_discount_amount > 0 || (calcItem && calcItem.membership_discount_amount > 0)) && (
+                      <div className="text-[10px] text-slate-400 line-through">
                         {formatCurrency(item.quantity * item.unit_price)}
                       </div>
                     )}
                     <div className="text-xs font-bold text-slate-900 font-mono">
                       {formatCurrency(lineTotal)}
                     </div>
+                    {calcItem && calcItem.membership_discount_amount > 0 && (
+                      <div className="text-[10px] text-sky-600 font-semibold">
+                        Diskon {calcItem.membership_discount_rate}% (-{formatCurrency(calcItem.membership_discount_amount)})
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -285,6 +290,26 @@ export function CartPanel({
               <span>Diskon Item</span>
               <span className="font-mono font-medium">
                 -{formatCurrency(calculation.total_item_discount)}
+              </span>
+            </div>
+          )}
+
+          {/* Membership Tier Discount */}
+          {calculation.total_membership_discount > 0 && (
+            <div className="flex items-center justify-between text-sky-700 bg-sky-50 px-2.5 py-1.5 rounded-lg border border-sky-200/80 font-medium">
+              <span className="flex items-center gap-1.5">
+                <span>Diskon Member</span>
+                {customer?.tier_name && (
+                  <span
+                    className="text-[10px] font-bold px-1.5 py-0.2 rounded text-white"
+                    style={{ backgroundColor: customer.tier_color || '#0284c7' }}
+                  >
+                    {customer.tier_name}
+                  </span>
+                )}
+              </span>
+              <span className="font-mono font-bold text-sky-700">
+                -{formatCurrency(calculation.total_membership_discount)}
               </span>
             </div>
           )}

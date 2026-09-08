@@ -2,13 +2,11 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { calculateCart, type CartCalculationResult, type CartItemInput } from '@barber/business-rules';
-import type { CartLineItem, BusinessSettings } from '../types/pos';
+import type { CartLineItem, BusinessSettings, CustomerDetailCRM } from '../types/pos';
 
-export function usePosCart(settings: BusinessSettings) {
+export function usePosCart(settings: BusinessSettings, customer?: CustomerDetailCRM | null) {
   const [items, setItems] = useState<CartLineItem[]>([]);
   const [saleDiscount, setSaleDiscount] = useState<number>(0);
-  // NOTE: customer assignment belum ada UI-nya — checkout selalu guest (p_customer_id: null).
-  // Jangan tambah selectedCustomerId di sini sampai customer picker dibangun.
   const [notes, setNotes] = useState<string>('');
 
   // Add Item to Cart
@@ -122,12 +120,18 @@ export function usePosCart(settings: BusinessSettings) {
 
     return calculateCart({
       items: inputItems,
+      customer_tier: customer
+        ? {
+            discount_percent_service: customer.tier_discount_service ?? 0,
+            discount_percent_product: customer.tier_discount_product ?? 0,
+          }
+        : null,
       sale_discount: saleDiscount,
       tax_enabled: settings.tax_enabled,
       tax_rate: settings.tax_rate,
       tax_inclusive: settings.tax_inclusive,
     });
-  }, [items, saleDiscount, settings]);
+  }, [items, saleDiscount, settings, customer]);
 
   return {
     items,

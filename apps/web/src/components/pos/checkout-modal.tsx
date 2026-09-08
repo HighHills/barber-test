@@ -164,15 +164,22 @@ export function CheckoutModal({
 
     try {
       // 1. Prepare items payload
-      const itemsPayload = items.map((item) => ({
-        item_type: item.item_type,
-        service_id: item.service_id || null,
-        product_id: item.product_id || null,
-        barber_id: item.barber_id || null,
-        description_snapshot: item.description_snapshot,
-        quantity: item.quantity,
-        item_discount_amount: item.item_discount_amount || 0,
-      }));
+      const itemsPayload = items.map((item) => {
+        const calcItem = calculation.items.find((c) => c.id === item.cart_item_id);
+        const itemDisc = item.item_discount_amount || 0;
+        const memberDisc = calcItem?.membership_discount_amount || 0;
+        return {
+          item_type: item.item_type,
+          service_id: item.service_id || null,
+          product_id: item.product_id || null,
+          barber_id: item.barber_id || null,
+          description_snapshot: item.description_snapshot,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          item_discount_amount: itemDisc + memberDisc,
+          membership_discount_amount: memberDisc,
+        };
+      });
 
       // 2. Prepare payments payload
       let paymentsPayload: Array<{
@@ -210,15 +217,21 @@ export function CheckoutModal({
         outlet_id: currentOutlet.id,
         cash_session_id: activeSession.id,
         customer_id: customer ? customer.id : null,
-        items: items.map((item) => ({
-          item_type: item.item_type,
-          service_id: item.service_id || null,
-          product_id: item.product_id || null,
-          barber_id: item.barber_id || null,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          item_discount_amount: item.item_discount_amount || 0,
-        })),
+        items: items.map((item) => {
+          const calcItem = calculation.items.find((c) => c.id === item.cart_item_id);
+          const itemDisc = item.item_discount_amount || 0;
+          const memberDisc = calcItem?.membership_discount_amount || 0;
+          return {
+            item_type: item.item_type,
+            service_id: item.service_id || null,
+            product_id: item.product_id || null,
+            barber_id: item.barber_id || null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            item_discount_amount: itemDisc + memberDisc,
+            membership_discount_amount: memberDisc,
+          };
+        }),
         payments: paymentsPayload,
         discount_amount: saleDiscount || 0,
         loyalty_points: pointsToRedeem,
@@ -301,14 +314,17 @@ export function CheckoutModal({
         total_amount: receiptTotal,
         tendered_amount: isCash ? tenderedCash : receiptTotal,
         change_amount: isCash ? receiptChange : 0,
-        items: items.map((i) => ({
-          description: i.description_snapshot,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-          total_amount: i.quantity * i.unit_price - i.item_discount_amount,
-          item_type: i.item_type,
-          barber_name: i.barber_name,
-        })),
+        items: items.map((i) => {
+          const calcItem = calculation.items.find((c) => c.id === i.cart_item_id);
+          return {
+            description: i.description_snapshot,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            total_amount: calcItem ? calcItem.total_amount : i.quantity * i.unit_price - i.item_discount_amount,
+            item_type: i.item_type,
+            barber_name: i.barber_name,
+          };
+        }),
         payments: paymentsPayload.map((p) => {
           const pm = paymentMethods.find((m) => m.id === p.payment_method_id);
           return {
@@ -359,6 +375,11 @@ export function CheckoutModal({
           <span className="text-3xl font-extrabold text-amber-400 font-mono">
             {formatCurrency(finalPayable)}
           </span>
+          {calculation.total_membership_discount > 0 && (
+            <div className="text-[11px] text-sky-300 font-semibold mt-1">
+              (Diskon Member {customer?.tier_name ? `(${customer.tier_name})` : ''}: -{formatCurrency(calculation.total_membership_discount)})
+            </div>
+          )}
           {pointsDiscountAmount > 0 && (
             <div className="text-[11px] text-emerald-400 font-semibold mt-1">
               (Hemat {formatCurrency(pointsDiscountAmount)} dari {maxRedeemablePoints} Poin Loyalitas)
@@ -387,13 +408,20 @@ export function CheckoutModal({
                     <Crown className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <span className="font-bold text-slate-900">{customer.full_name}</span>
-                    <span
-                      className="ml-1.5 text-[9px] font-black px-1.5 py-0.2 rounded-full text-white"
-                      style={{ backgroundColor: customer.tier_color || '#f59e0b' }}
-                    >
-                      {customer.tier_name || 'Member'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-900">{customer.full_name}</span>
+                      <span
+                        className="text-[9px] font-black px-1.5 py-0.2 rounded-full text-white"
+                        style={{ backgroundColor: customer.tier_color || '#f59e0b' }}
+                      >
+                        {customer.tier_name || 'Member'}
+                      </span>
+                    </div>
+                    {calculation.total_membership_discount > 0 && (
+                      <div className="text-[10px] text-sky-700 font-semibold mt-0.5">
+                        Diskon member aktif: -{formatCurrency(calculation.total_membership_discount)}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="font-mono font-bold text-emerald-700 flex items-center gap-1">

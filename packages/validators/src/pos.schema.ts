@@ -8,6 +8,7 @@ export const createSaleItemSchema = z.object({
   quantity: z.number().positive(),
   unit_price: z.number().nonnegative(),
   item_discount_amount: z.number().nonnegative().default(0),
+  membership_discount_amount: z.number().nonnegative().default(0).optional(),
 }).refine(
   (data) => {
     if (data.item_type === 'SERVICE') {
