@@ -226,7 +226,7 @@ export function CartPanel({
                     <div className="text-xs font-bold text-slate-900 font-mono">
                       {formatCurrency(lineTotal)}
                     </div>
-                    {calcItem && calcItem.membership_discount_amount > 0 && (
+                    {calcItem && calcItem.membership_discount_amount > 0 && Boolean(customer) && (
                       <div className="text-[10px] text-sky-600 font-semibold">
                         Diskon {calcItem.membership_discount_rate}% (-{formatCurrency(calcItem.membership_discount_amount)})
                       </div>
@@ -295,7 +295,7 @@ export function CartPanel({
           )}
 
           {/* Membership Tier Discount */}
-          {calculation.total_membership_discount > 0 && (
+          {calculation.total_membership_discount > 0 && Boolean(customer) && (
             <div className="flex items-center justify-between text-sky-700 bg-sky-50 px-2.5 py-1.5 rounded-lg border border-sky-200/80 font-medium">
               <span className="flex items-center gap-1.5">
                 <span>Diskon Member</span>

@@ -78,9 +78,11 @@ export function PosScreen(): React.JSX.Element {
 
   // Check for pending queue checkout hand-off from /queue
   useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem('pending_queue_checkout');
-      if (stored) {
+    const processQueueHandoff = async () => {
+      try {
+        const stored = sessionStorage.getItem('pending_queue_checkout');
+        if (!stored) return;
+
         const payload = JSON.parse(stored);
         sessionStorage.removeItem('pending_queue_checkout');
 
@@ -99,11 +101,75 @@ export function PosScreen(): React.JSX.Element {
             `Antrean #${payload.queue_number} (${payload.customer_name || 'Tamu'}) dengan kapster ${payload.barber_name || '-'} berhasil dimuat ke nota kasir siap bayar.`
           );
         }
+
+        // Hydrate full customer if queue hand-off includes customer_id
+        if (payload.customer_id) {
+          try {
+            const { data: cData, error: cErr } = await supabase
+              .from('customers')
+              .select(`
+                id,
+                customer_code,
+                full_name,
+                phone,
+                email,
+                gender,
+                date_of_birth,
+                tier_id,
+                current_loyalty_points,
+                lifetime_loyalty_points,
+                preferred_barber_id,
+                haircut_preferences,
+                created_at,
+                customer_tiers(id, code, name, color_hex, discount_percent_service, discount_percent_product),
+                employees!preferred_barber_id(full_name)
+              `)
+              .eq('id', payload.customer_id)
+              .maybeSingle();
+
+            if (!cErr && cData) {
+              const tierObj = Array.isArray(cData.customer_tiers)
+                ? cData.customer_tiers[0]
+                : cData.customer_tiers;
+              const barberObj = Array.isArray(cData.employees)
+                ? cData.employees[0]
+                : cData.employees;
+
+              setSelectedCustomer({
+                id: cData.id,
+                customer_code: cData.customer_code,
+                full_name: cData.full_name,
+                phone: cData.phone,
+                email: cData.email,
+                gender: cData.gender,
+                date_of_birth: cData.date_of_birth,
+                tier_id: cData.tier_id,
+                tier_code: tierObj?.code || 'BRONZE',
+                tier_name: tierObj?.name || 'Bronze Member',
+                tier_color: tierObj?.color_hex || '#94a3b8',
+                tier_discount_service: Number(tierObj?.discount_percent_service) || 0,
+                tier_discount_product: Number(tierObj?.discount_percent_product) || 0,
+                current_loyalty_points: Number(cData.current_loyalty_points) || 0,
+                lifetime_loyalty_points: Number(cData.lifetime_loyalty_points) || 0,
+                preferred_barber_id: cData.preferred_barber_id,
+                preferred_barber_name: barberObj?.full_name || null,
+                haircut_preferences: cData.haircut_preferences,
+                total_visits: 0,
+                total_spending: 0,
+                created_at: cData.created_at,
+              });
+            }
+          } catch (fetchCustErr) {
+            console.warn('Failed to hydrate customer from queue handoff:', fetchCustErr);
+          }
+        }
+      } catch (err) {
+        console.warn('Queue handoff parse error:', err);
       }
-    } catch (err) {
-      console.warn('Queue handoff parse error:', err);
-    }
-  }, [cart]);
+    };
+
+    processQueueHandoff();
+  }, [cart, supabase]);
 
   // 1. Loading State
   if (isLoading) {
@@ -159,6 +225,7 @@ export function PosScreen(): React.JSX.Element {
     setCompletedSale(sale);
     cart.clearCart();
     setSelectedCustomer(null);
+    setQueueHandOffNotice(null);
   };
 
   return (
@@ -222,7 +289,10 @@ export function PosScreen(): React.JSX.Element {
             notes={cart.notes}
             customer={selectedCustomer}
             onOpenCustomerPicker={() => setIsCustomerPickerOpen(true)}
-            onClearCustomer={() => setSelectedCustomer(null)}
+            onClearCustomer={() => {
+              setSelectedCustomer(null);
+              setQueueHandOffNotice(null);
+            }}
             onUpdateQuantity={cart.updateQuantity}
             onUpdateItemDiscount={cart.updateItemDiscount}
             onRemoveItem={cart.removeItem}
@@ -281,11 +351,6 @@ export function PosScreen(): React.JSX.Element {
         selectedCustomerId={selectedCustomer?.id}
         onSelectCustomer={(cust) => {
           setSelectedCustomer(cust);
-          if (cust && cust.tier_discount_service && cust.tier_discount_service > 0) {
-            setQueueHandOffNotice(
-              `Member ${cust.full_name} (${cust.tier_name}) aktif: Diskon Jasa ${cust.tier_discount_service}% diterapkan!`
-            );
-          }
         }}
         onClose={() => setIsCustomerPickerOpen(false)}
         onOpenCreateModal={() => setIsCustomerFormOpen(true)}

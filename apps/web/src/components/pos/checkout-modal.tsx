@@ -375,7 +375,7 @@ export function CheckoutModal({
           <span className="text-3xl font-extrabold text-amber-400 font-mono">
             {formatCurrency(finalPayable)}
           </span>
-          {calculation.total_membership_discount > 0 && (
+          {calculation.total_membership_discount > 0 && Boolean(customer) && (
             <div className="text-[11px] text-sky-300 font-semibold mt-1">
               (Diskon Member {customer?.tier_name ? `(${customer.tier_name})` : ''}: -{formatCurrency(calculation.total_membership_discount)})
             </div>
