@@ -117,9 +117,10 @@ export function parseOperatingHours(operatingHours?: string | null): OperatingHo
  */
 export function isSlotPastTime(
   slot: { time_slot: string; reason?: string | null },
-  selectedDate?: string | null
+  selectedDate?: string | null,
+  referenceDate: Date = new Date()
 ): boolean {
-  // 1. Check backend explicit reason
+  // 1. Check backend explicit reason if available
   if (slot.reason) {
     const r = slot.reason.toLowerCase();
     if (r.includes('lewat') || r.includes('past') || r.includes('lampau')) {
@@ -129,16 +130,19 @@ export function isSlotPastTime(
 
   // 2. Client-side evaluation for selectedDate
   if (selectedDate) {
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (selectedDate < todayStr) {
+    const year = referenceDate.getFullYear();
+    const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
+    const day = String(referenceDate.getDate()).padStart(2, '0');
+    const localTodayStr = `${year}-${month}-${day}`;
+
+    if (selectedDate < localTodayStr) {
       return true;
     }
-    if (selectedDate === todayStr) {
-      const now = new Date();
-      const currentMins = now.getHours() * 60 + now.getMinutes();
+    if (selectedDate === localTodayStr) {
+      const currentMins = referenceDate.getHours() * 60 + referenceDate.getMinutes();
       const slotMins = timeToMinutes(slot.time_slot);
-      // Buffer of 10 minutes, matching backend rule
-      if (slotMins <= currentMins + 10) {
+      // If slot is in the past
+      if (slotMins <= currentMins) {
         return true;
       }
     }
