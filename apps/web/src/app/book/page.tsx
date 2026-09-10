@@ -19,11 +19,21 @@ import {
   Copy,
   Check,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   ExternalLink,
   MapPin,
   RefreshCw,
+  X,
 } from 'lucide-react';
+import {
+  parseOperatingHours,
+  calculateBookingTiming,
+  formatBookingError,
+  findLatestAllowableSlot,
+  minutesToTime,
+  type BookingErrorInfo,
+} from '../../lib/booking-error-helper';
 import type {
   PublicOutlet,
   PublicService,
@@ -74,6 +84,12 @@ export default function PublicBookingPage(): React.JSX.Element {
   const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [bookingError, setBookingError] = useState<BookingErrorInfo | null>(null);
+
+  const clearErrors = () => {
+    clearErrors();
+    setBookingError(null);
+  };
   const [copiedTicket, setCopiedTicket] = useState<boolean>(false);
 
   // Confirmed Ticket
@@ -202,7 +218,35 @@ export default function PublicBookingPage(): React.JSX.Element {
       return;
     }
 
-    setErrorMessage(null);
+    clearErrors();
+
+    // Pre-validate timing against outlet operating hours & service duration
+    const timingCheck = calculateBookingTiming(
+      selectedTimeSlot,
+      selectedService.duration_minutes,
+      selectedOutlet.operating_hours,
+      slots
+    );
+
+    if (timingCheck.isDurationOverrun || timingCheck.isOutsideHours) {
+      const formatted = formatBookingError(
+        timingCheck.isDurationOverrun
+          ? 'Durasi layanan melewati jam operasional barbershop'
+          : 'Waktu booking berada di luar jam operasional barbershop',
+        {
+          service: selectedService,
+          outlet: selectedOutlet,
+          barber: selectedBarber,
+          isAnyBarber,
+          selectedSlot: selectedTimeSlot,
+          availableSlots: slots,
+        }
+      );
+      setBookingError(formatted);
+      setErrorMessage(formatted.message);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -220,12 +264,20 @@ export default function PublicBookingPage(): React.JSX.Element {
 
       const result = await submitPublicBooking(payload);
       setConfirmation(result);
+      clearErrors();
       setCurrentStep(6); // Go to success ticket
     } catch (err: any) {
       console.error('Booking submission error:', err);
-      setErrorMessage(
-        err?.message || 'Terjadi kesalahan saat memproses reservasi. Silakan coba kembali.'
-      );
+      const formatted = formatBookingError(err, {
+        service: selectedService,
+        outlet: selectedOutlet,
+        barber: selectedBarber,
+        isAnyBarber,
+        selectedSlot: selectedTimeSlot,
+        availableSlots: slots,
+      });
+      setBookingError(formatted);
+      setErrorMessage(formatted.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -260,6 +312,7 @@ export default function PublicBookingPage(): React.JSX.Element {
 
   // Reset booking form
   const handleResetBooking = () => {
+    clearErrors();
     setConfirmation(null);
     setSelectedTimeSlot(null);
     setCustomerName('');
@@ -322,7 +375,10 @@ export default function PublicBookingPage(): React.JSX.Element {
                     key={step.num}
                     type="button"
                     onClick={() => {
-                      if (step.num < currentStep) setCurrentStep(step.num);
+                      if (step.num < currentStep) {
+                        clearErrors();
+                        setCurrentStep(step.num);
+                      }
                     }}
                     disabled={step.num > currentStep}
                     className={`flex items-center gap-1.5 text-xs font-bold transition-all ${
@@ -359,13 +415,25 @@ export default function PublicBookingPage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Global Error Banner */}
-        {errorMessage && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start gap-3 animate-in fade-in">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <div className="text-sm font-medium">{errorMessage}</div>
-          </div>
-        )}
+        {/* Global Rich Error Banner */}
+        <BookingErrorAlert
+          error={bookingError}
+          simpleMessage={errorMessage}
+          onClear={clearErrors}
+          onAction={(actionType) => {
+            if (actionType === 'choose_any_barber') {
+              setIsAnyBarber(true);
+              setSelectedBarber(null);
+              clearErrors();
+              setCurrentStep(4);
+              loadSlots();
+            } else {
+              clearErrors();
+              setCurrentStep(4);
+              loadSlots();
+            }
+          }}
+        />
 
         {/* STEP 1: PILIH CABANG */}
         {currentStep === 1 && (
@@ -736,8 +804,8 @@ export default function PublicBookingPage(): React.JSX.Element {
               </div>
             </div>
 
-            {/* Selected Date Header */}
-            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
+            {/* Selected Date & Barber Header */}
+            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="text-slate-400">
                 Jadwal:{' '}
                 <strong className="text-white">{formatDateDisplay(selectedDate)}</strong>
@@ -747,6 +815,42 @@ export default function PublicBookingPage(): React.JSX.Element {
                 <strong>{isAnyBarber ? 'Siapa Saja (Tersedia)' : selectedBarber?.full_name}</strong>
               </span>
             </div>
+
+            {/* Service & Operational Hours Guidance Header */}
+            {selectedService && selectedOutlet && (() => {
+              const opHours = parseOperatingHours(selectedOutlet.operating_hours);
+              const recSlot = findLatestAllowableSlot(slots, opHours.closeMinutes, selectedService.duration_minutes);
+              const latestTime = minutesToTime(opHours.closeMinutes - selectedService.duration_minutes);
+
+              return (
+                <div className="bg-slate-900/80 p-3 sm:p-3.5 rounded-2xl border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Scissors className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-white text-sm">{selectedService.name}</strong>
+                        <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.2 rounded-md">
+                          {selectedService.duration_minutes} Menit
+                        </span>
+                      </div>
+                      <p className="text-slate-400 text-[11px] mt-0.5">
+                        Operasional: {opHours.openTime} – {opHours.closeTime} WIB ({selectedOutlet.name})
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">Batas kedatangan:</span>
+                    <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-xl font-mono font-bold text-xs flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      Maks. {recSlot || latestTime} WIB
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Slot Grid */}
             {isLoadingSlots ? (
@@ -760,71 +864,213 @@ export default function PublicBookingPage(): React.JSX.Element {
                 <p className="text-sm font-medium">Tidak ada slot jam yang tersedia pada tanggal ini.</p>
               </div>
             ) : (
-              <div>
+              <div className="space-y-4">
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                   {slots.map((slot) => {
                     const isSelected = selectedTimeSlot === slot.time_slot;
                     const isAvailable = slot.is_available;
+                    const slotTiming = calculateBookingTiming(
+                      slot.time_slot,
+                      selectedService?.duration_minutes || 45,
+                      selectedOutlet?.operating_hours,
+                      slots
+                    );
+                    const isOverrun = slotTiming.isDurationOverrun;
 
                     return (
                       <button
                         key={slot.time_slot}
                         type="button"
                         disabled={!isAvailable}
-                        onClick={() => setSelectedTimeSlot(slot.time_slot)}
-                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                        onClick={() => {
+                          setSelectedTimeSlot(slot.time_slot);
+                          if (isOverrun) {
+                            const err = formatBookingError(
+                              'Durasi layanan melewati jam operasional barbershop',
+                              {
+                                service: selectedService,
+                                outlet: selectedOutlet,
+                                barber: selectedBarber,
+                                isAnyBarber,
+                                selectedSlot: slot.time_slot,
+                                availableSlots: slots,
+                              }
+                            );
+                            setBookingError(err);
+                          } else {
+                            clearErrors();
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-lg shadow-amber-500/20 scale-105'
+                            ? isOverrun
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500 font-black shadow-lg shadow-amber-500/10 scale-105'
+                              : 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-lg shadow-amber-500/20 scale-105'
                             : isAvailable
-                            ? 'bg-slate-900 text-white border-slate-800 hover:border-amber-400/60 hover:bg-slate-800'
+                            ? isOverrun
+                              ? 'bg-slate-900/90 text-amber-200/90 border-amber-500/30 hover:border-amber-400 hover:bg-slate-800/80'
+                              : 'bg-slate-900 text-white border-slate-800 hover:border-amber-400/60 hover:bg-slate-800'
                             : 'bg-slate-950/40 text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
                         }`}
                       >
                         <span className="text-sm font-mono tracking-tight font-bold">
                           {slot.time_slot}
                         </span>
-                        <span className={`text-[10px] ${isSelected ? 'text-slate-950 font-bold' : isAvailable ? 'text-emerald-400' : 'text-slate-600'}`}>
-                          {isAvailable ? 'Tersedia' : 'Penuh'}
+                        <span
+                          className={`text-[10px] ${
+                            isSelected
+                              ? isOverrun
+                                ? 'text-amber-300 font-bold'
+                                : 'text-slate-950 font-bold'
+                              : isAvailable
+                              ? isOverrun
+                                ? 'text-amber-400/90 font-medium'
+                                : 'text-emerald-400'
+                              : 'text-slate-600'
+                          }`}
+                        >
+                          {isAvailable ? (isOverrun ? 'Lewat Tutup' : 'Tersedia') : 'Penuh'}
                         </span>
                       </button>
                     );
                   })}
                 </div>
-                <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-slate-400">
+
+                {/* Slot Legend */}
+                <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400 pt-1">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                     Slot Tersedia
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
+                    Lewat Jam Tutup
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
                     Penuh / Lewat
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                     Pilihan Anda
                   </span>
                 </div>
+
+                {/* Interactive Timing Status Card for Selected Slot */}
+                {selectedTimeSlot && selectedService && selectedOutlet && (() => {
+                  const currentTiming = calculateBookingTiming(
+                    selectedTimeSlot,
+                    selectedService.duration_minutes,
+                    selectedOutlet.operating_hours,
+                    slots
+                  );
+
+                  if (currentTiming.isDurationOverrun) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-200 space-y-2 animate-in fade-in">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <div className="text-sm font-bold text-white flex items-center gap-2">
+                              <span>Durasi Layanan Melewati Jam Tutup Cabang</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                                Butuh Waktu Lebih Awal
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                              Layanan <strong>{selectedService.name}</strong> berdurasi <strong>{selectedService.duration_minutes} menit</strong>. Jika Anda mulai pukul <strong className="text-white font-mono">{selectedTimeSlot} WIB</strong>, estimasi selesai adalah pukul <strong className="text-amber-300 font-mono font-bold">~{currentTiming.estimatedEndTime} WIB</strong>, melewati jam operasional tutup cabang ({currentTiming.closeTime} WIB).
+                            </p>
+                            <p className="text-xs text-amber-300 font-medium pt-1">
+                              💡 Silakan pilih slot jam kedatangan paling lambat pukul <strong className="underline decoration-amber-400 font-bold">{currentTiming.latestAllowableSlot || currentTiming.latestValidStartTime} WIB</strong> agar proses pangkas dapat selesai dengan maksimal.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-3.5 rounded-xl bg-slate-900/70 border border-emerald-500/30 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>
+                          Estimasi Jadwal:{' '}
+                          <strong className="text-white font-mono">{selectedTimeSlot} – {currentTiming.estimatedEndTime} WIB</strong>
+                          <span className="text-emerald-400 ml-1.5 font-medium">
+                            ({selectedService.duration_minutes} menit • Dalam jam operasional)
+                          </span>
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Jam tutup cabang: <strong className="text-slate-300">{currentTiming.closeTime} WIB</strong>
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
             <div className="pt-4 flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => setCurrentStep(3)}
+                onClick={() => {
+                  clearErrors();
+                  setCurrentStep(3);
+                }}
                 className="text-slate-400 hover:text-white font-medium px-4 py-2.5 rounded-xl flex items-center gap-1.5 text-sm transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Kembali</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setCurrentStep(5)}
-                disabled={!selectedTimeSlot}
-                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-6 py-3 rounded-xl flex items-center gap-2 text-sm shadow-md shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                <span>Lanjut: Isi Data Diri</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {(() => {
+                const activeTiming = selectedTimeSlot && selectedService && selectedOutlet
+                  ? calculateBookingTiming(
+                      selectedTimeSlot,
+                      selectedService.duration_minutes,
+                      selectedOutlet.operating_hours,
+                      slots
+                    )
+                  : null;
+
+                const isOverrun = Boolean(activeTiming?.isDurationOverrun);
+
+                return (
+                  <div className="flex items-center gap-3">
+                    {isOverrun && (
+                      <span className="text-[11px] text-amber-400 hidden sm:inline">
+                        Pilih slot sebelum {activeTiming?.latestAllowableSlot || activeTiming?.latestValidStartTime} WIB
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isOverrun) {
+                          const err = formatBookingError(
+                            'Durasi layanan melewati jam operasional barbershop',
+                            {
+                              service: selectedService,
+                              outlet: selectedOutlet,
+                              barber: selectedBarber,
+                              isAnyBarber,
+                              selectedSlot: selectedTimeSlot,
+                              availableSlots: slots,
+                            }
+                          );
+                          setBookingError(err);
+                          return;
+                        }
+                        clearErrors();
+                        setCurrentStep(5);
+                      }}
+                      disabled={!selectedTimeSlot || isOverrun}
+                      className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-6 py-3 rounded-xl flex items-center gap-2 text-sm shadow-md shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      <span>Lanjut: Isi Data Diri</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1189,6 +1435,226 @@ export default function PublicBookingPage(): React.JSX.Element {
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-4 text-center text-xs text-slate-500">
         <p>© 2026 Barbershop Operating System. All Rights Reserved.</p>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Structured Booking Error Component
+ * Formats Condition A (outside hours), Condition B (duration overrun), Condition C (barber conflict),
+ * and Condition D (slot taken) with human-friendly Indonesian text, live data, and quick actions.
+ */
+function BookingErrorAlert({
+  error,
+  simpleMessage,
+  onClear,
+  onAction,
+}: {
+  error: BookingErrorInfo | null;
+  simpleMessage: string | null;
+  onClear: () => void;
+  onAction?: (actionType: string) => void;
+}) {
+  if (!error && !simpleMessage) return null;
+
+  // Simple string message fallback
+  if (!error) {
+    return (
+      <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start justify-between gap-3 animate-in fade-in">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="text-sm font-medium">{simpleMessage}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-rose-400 hover:text-white p-1 rounded-lg transition-colors"
+          title="Tutup Pesan"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  const isDurationOverrun = error.kind === 'DURATION_OVERRUN';
+  const isBarberUnavailable = error.kind === 'BARBER_UNAVAILABLE';
+  const isSlotTaken = error.kind === 'SLOT_TAKEN';
+
+  const themeClasses = isDurationOverrun
+    ? 'bg-amber-950/40 border-amber-500/40 text-amber-200 shadow-amber-500/5'
+    : isBarberUnavailable
+    ? 'bg-sky-950/40 border-sky-500/40 text-sky-200 shadow-sky-500/5'
+    : isSlotTaken
+    ? 'bg-orange-950/40 border-orange-500/40 text-orange-200 shadow-orange-500/5'
+    : 'bg-rose-950/40 border-rose-500/40 text-rose-200 shadow-rose-500/5';
+
+  const badgeClasses = isDurationOverrun
+    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+    : isBarberUnavailable
+    ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+    : isSlotTaken
+    ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+    : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+
+  const iconComponent = isDurationOverrun ? (
+    <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+  ) : isBarberUnavailable ? (
+    <UserCheck className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+  ) : isSlotTaken ? (
+    <RefreshCw className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+  ) : (
+    <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+  );
+
+  return (
+    <div className={`mb-6 p-4 sm:p-5 rounded-2xl border shadow-xl animate-in fade-in duration-200 ${themeClasses}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          {iconComponent}
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                {error.title}
+              </h3>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${badgeClasses}`}>
+                {isDurationOverrun
+                  ? 'Durasi Pengerjaan'
+                  : isBarberUnavailable
+                  ? 'Jadwal Barber'
+                  : isSlotTaken
+                  ? 'Slot Terisi'
+                  : 'Info Reservasi'}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              {error.message}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800/60 transition-colors shrink-0"
+          title="Tutup Pesan"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Structured Details Card (Actual Data) */}
+      {error.details && (
+        <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+          {error.details.serviceName && (
+            <div className="bg-slate-900/70 p-2.5 rounded-xl border border-slate-800/80">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Layanan & Durasi
+              </span>
+              <strong className="text-white block mt-0.5">
+                {error.details.serviceName}
+              </strong>
+              {error.details.serviceDuration && (
+                <span className="text-amber-400 font-mono font-medium text-[11px]">
+                  {error.details.serviceDuration} Menit Pengerjaan
+                </span>
+              )}
+            </div>
+          )}
+
+          {error.details.selectedSlot && (
+            <div className="bg-slate-900/70 p-2.5 rounded-xl border border-slate-800/80">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Waktu Dipilih
+              </span>
+              <strong className="text-white font-mono block mt-0.5">
+                {error.details.selectedSlot}
+              </strong>
+              {error.details.estimatedEndTime && (
+                <span className="text-rose-300 font-mono text-[11px]">
+                  Estimasi Selesai: ~{error.details.estimatedEndTime}
+                </span>
+              )}
+            </div>
+          )}
+
+          {error.details.operatingHours && (
+            <div className="bg-slate-900/70 p-2.5 rounded-xl border border-slate-800/80">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Jam Operasional
+              </span>
+              <strong className="text-white font-mono block mt-0.5">
+                {error.details.operatingHours}
+              </strong>
+              {error.details.closeTime && (
+                <span className="text-slate-400 text-[11px]">
+                  Tutup Cabang: {error.details.closeTime}
+                </span>
+              )}
+            </div>
+          )}
+
+          {error.details.latestValidTime && (
+            <div className="bg-slate-900/80 p-2.5 rounded-xl border border-amber-500/40 col-span-2 sm:col-span-3">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400 block">
+                💡 Batas Booking Terakhir yang Tersedia
+              </span>
+              <div className="text-xs text-slate-200 mt-0.5">
+                Silakan pilih jadwal kedatangan paling lambat pukul{' '}
+                <strong className="text-amber-300 font-mono font-bold text-sm">
+                  {error.details.latestValidTime}
+                </strong>{' '}
+                agar layanan pangkas dapat diselesaikan secara maksimal sebelum jam tutup barbershop.
+                {error.details.latestRecommendedSlot && (
+                  <span className="block mt-0.5 text-slate-300">
+                    Rekomendasi slot terdekat:{' '}
+                    <strong className="text-emerald-400 font-mono font-bold">
+                      {error.details.latestRecommendedSlot}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error.details.barberName && !error.details.latestValidTime && (
+            <div className="bg-slate-900/70 p-2.5 rounded-xl border border-slate-800/80 col-span-2 sm:col-span-1">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Barber Terpilih
+              </span>
+              <strong className="text-white block mt-0.5">{error.details.barberName}</strong>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Suggestion Callout & Action Buttons */}
+      <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <p className="text-slate-300 font-medium flex-1">
+          {error.suggestion}
+        </p>
+
+        <div className="flex items-center gap-2">
+          {error.actionType === 'choose_any_barber' && (
+            <button
+              type="button"
+              onClick={() => onAction && onAction('choose_any_barber')}
+              className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-sky-500/20"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Gunakan Opsi "Siapa Saja"</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onAction && onAction('change_time')}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Pilih Jadwal Lain</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
