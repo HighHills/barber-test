@@ -21,6 +21,7 @@ import {
   Truck,
   Receipt,
   Calendar,
+  Settings,
 } from 'lucide-react';
 
 interface PosHeaderProps {
@@ -299,6 +300,18 @@ export function PosHeader({
             >
               <Users className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline font-semibold">Sub-Akun</span>
+            </Link>
+          )}
+
+          {/* OWNER & ADMIN: Settings Link */}
+          {isOwner && (
+            <Link
+              href="/settings"
+              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              title="Pengaturan Bisnis & Sistem (Khusus Owner / Admin)"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline font-medium">Settings</span>
             </Link>
           )}
 
