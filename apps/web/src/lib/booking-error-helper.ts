@@ -113,27 +113,67 @@ export function parseOperatingHours(operatingHours?: string | null): OperatingHo
 }
 
 /**
+ * Checks if a slot time has already passed based on backend reason or selected date & time.
+ */
+export function isSlotPastTime(
+  slot: { time_slot: string; reason?: string | null },
+  selectedDate?: string | null
+): boolean {
+  // 1. Check backend explicit reason
+  if (slot.reason) {
+    const r = slot.reason.toLowerCase();
+    if (r.includes('lewat') || r.includes('past') || r.includes('lampau')) {
+      return true;
+    }
+  }
+
+  // 2. Client-side evaluation for selectedDate
+  if (selectedDate) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (selectedDate < todayStr) {
+      return true;
+    }
+    if (selectedDate === todayStr) {
+      const now = new Date();
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+      const slotMins = timeToMinutes(slot.time_slot);
+      // Buffer of 10 minutes, matching backend rule
+      if (slotMins <= currentMins + 10) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Finds the latest available slot from a list of slots where slot_time + duration <= closeMinutes.
  */
 export function findLatestAllowableSlot(
-  slots: { time_slot: string; is_available?: boolean }[],
+  slots: { time_slot: string; is_available?: boolean; reason?: string | null }[],
   closeMinutes: number,
-  durationMinutes: number
+  durationMinutes: number,
+  selectedDate?: string | null
 ): string | null {
   const validSlots = slots
     .map((s) => ({
       slot: s.time_slot,
       mins: timeToMinutes(s.time_slot),
       available: s.is_available !== false,
+      isPast: isSlotPastTime(s, selectedDate),
     }))
     .filter((s) => s.mins + durationMinutes <= closeMinutes)
     .sort((a, b) => b.mins - a.mins);
 
   if (validSlots.length === 0) return null;
 
-  // Prefer available slot, fallback to latest fitting slot
-  const preferred = validSlots.find((s) => s.available);
-  return preferred ? preferred.slot : validSlots[0].slot;
+  // Prefer available and not-past slot
+  const preferred = validSlots.find((s) => s.available && !s.isPast);
+  if (preferred) return preferred.slot;
+
+  const anyAvailable = validSlots.find((s) => s.available);
+  return anyAvailable ? anyAvailable.slot : validSlots[0].slot;
 }
 
 /**
@@ -179,7 +219,8 @@ export interface BookingErrorContext {
   barber?: { full_name: string } | null;
   isAnyBarber?: boolean;
   selectedSlot?: string | null;
-  availableSlots?: { time_slot: string; is_available?: boolean }[];
+  selectedDate?: string | null;
+  availableSlots?: { time_slot: string; is_available?: boolean; reason?: string | null }[];
 }
 
 /**
@@ -280,6 +321,29 @@ export function formatBookingError(
     };
   }
 
+  // --- PAST TIME ERROR (Evaluated before collision/full checks) ---
+  const isPastTime =
+    (context.selectedSlot && context.selectedDate
+      ? isSlotPastTime({ time_slot: context.selectedSlot }, context.selectedDate)
+      : false) ||
+    lower.includes('lampau') ||
+    lower.includes('past') ||
+    lower.includes('waktu sudah lewat');
+
+  if (isPastTime) {
+    return {
+      kind: 'OUTSIDE_HOURS',
+      title: 'Waktu Reservasi Sudah Terlewat',
+      message: `Slot waktu pukul ${selectedSlot} WIB sudah terlewat dari waktu saat ini.`,
+      details: {
+        selectedSlot: `${selectedSlot} WIB`,
+        outletName,
+      },
+      suggestion: `Silakan pilih slot waktu kedatangan berikutnya yang masih tersedia hari ini atau pilih tanggal lain.`,
+      actionType: 'change_time',
+    };
+  }
+
   // --- KONDISI C: BARBER COLLISION / SCHEDULE CONFLICT ---
   if (
     lower.includes('sudah memiliki jadwal') ||
@@ -329,20 +393,7 @@ export function formatBookingError(
     };
   }
 
-  // --- PAST TIME ERROR ---
-  if (lower.includes('lampau') || lower.includes('past') || lower.includes('waktu sudah lewat')) {
-    return {
-      kind: 'OUTSIDE_HOURS',
-      title: 'Waktu Reservasi Sudah Terlewat',
-      message: `Slot waktu pukul ${selectedSlot} WIB sudah terlewat dari waktu saat ini.`,
-      details: {
-        selectedSlot: `${selectedSlot} WIB`,
-        outletName,
-      },
-      suggestion: `Silakan pilih slot waktu kedatangan berikutnya yang masih tersedia hari ini atau pilih tanggal lain.`,
-      actionType: 'change_time',
-    };
-  }
+
 
   // --- CLEAN GENERAL FALLBACK (Without RPC/database technical jargon) ---
   let cleanMsg = rawMsg;

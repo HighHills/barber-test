@@ -31,6 +31,7 @@ import {
   calculateBookingTiming,
   formatBookingError,
   findLatestAllowableSlot,
+  isSlotPastTime,
   minutesToTime,
   type BookingErrorInfo,
 } from '../../lib/booking-error-helper';
@@ -819,7 +820,7 @@ export default function PublicBookingPage(): React.JSX.Element {
             {/* Service & Operational Hours Guidance Header */}
             {selectedService && selectedOutlet && (() => {
               const opHours = parseOperatingHours(selectedOutlet.operating_hours);
-              const recSlot = findLatestAllowableSlot(slots, opHours.closeMinutes, selectedService.duration_minutes);
+              const recSlot = findLatestAllowableSlot(slots, opHours.closeMinutes, selectedService.duration_minutes, selectedDate);
               const latestTime = minutesToTime(opHours.closeMinutes - selectedService.duration_minutes);
 
               return (
@@ -868,20 +869,30 @@ export default function PublicBookingPage(): React.JSX.Element {
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                   {slots.map((slot) => {
                     const isSelected = selectedTimeSlot === slot.time_slot;
-                    const isAvailable = slot.is_available;
+                    const isPastTime = isSlotPastTime(slot, selectedDate);
                     const slotTiming = calculateBookingTiming(
                       slot.time_slot,
                       selectedService?.duration_minutes || 45,
                       selectedOutlet?.operating_hours,
                       slots
                     );
-                    const isOverrun = slotTiming.isDurationOverrun;
+                    const isOverrun = slot.is_available && !isPastTime && slotTiming.isDurationOverrun;
+                    const isFullyBooked = !slot.is_available && !isPastTime;
+                    const statusLabel = isPastTime
+                      ? 'Sudah Lewat'
+                      : isFullyBooked
+                      ? 'Penuh'
+                      : isOverrun
+                      ? 'Lewat Jam Tutup'
+                      : 'Tersedia';
+
+                    const isDisabled = isPastTime || isFullyBooked;
 
                     return (
                       <button
                         key={slot.time_slot}
                         type="button"
-                        disabled={!isAvailable}
+                        disabled={isDisabled}
                         onClick={() => {
                           setSelectedTimeSlot(slot.time_slot);
                           if (isOverrun) {
@@ -893,6 +904,7 @@ export default function PublicBookingPage(): React.JSX.Element {
                                 barber: selectedBarber,
                                 isAnyBarber,
                                 selectedSlot: slot.time_slot,
+                                selectedDate,
                                 availableSlots: slots,
                               }
                             );
@@ -906,11 +918,13 @@ export default function PublicBookingPage(): React.JSX.Element {
                             ? isOverrun
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500 font-black shadow-lg shadow-amber-500/10 scale-105'
                               : 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-lg shadow-amber-500/20 scale-105'
-                            : isAvailable
-                            ? isOverrun
-                              ? 'bg-slate-900/90 text-amber-200/90 border-amber-500/30 hover:border-amber-400 hover:bg-slate-800/80'
-                              : 'bg-slate-900 text-white border-slate-800 hover:border-amber-400/60 hover:bg-slate-800'
-                            : 'bg-slate-950/40 text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+                            : isPastTime
+                            ? 'bg-slate-950/60 text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+                            : isFullyBooked
+                            ? 'bg-slate-950/40 text-rose-400/80 border-rose-950/50 cursor-not-allowed opacity-60'
+                            : isOverrun
+                            ? 'bg-slate-900/90 text-amber-200/90 border-amber-500/30 hover:border-amber-400 hover:bg-slate-800/80'
+                            : 'bg-slate-900 text-white border-slate-800 hover:border-amber-400/60 hover:bg-slate-800'
                         }`}
                       >
                         <span className="text-sm font-mono tracking-tight font-bold">
@@ -922,14 +936,16 @@ export default function PublicBookingPage(): React.JSX.Element {
                               ? isOverrun
                                 ? 'text-amber-300 font-bold'
                                 : 'text-slate-950 font-bold'
-                              : isAvailable
-                              ? isOverrun
-                                ? 'text-amber-400/90 font-medium'
-                                : 'text-emerald-400'
-                              : 'text-slate-600'
+                              : isPastTime
+                              ? 'text-slate-600'
+                              : isFullyBooked
+                              ? 'text-rose-400 font-medium'
+                              : isOverrun
+                              ? 'text-amber-400/90 font-medium'
+                              : 'text-emerald-400 font-medium'
                           }`}
                         >
-                          {isAvailable ? (isOverrun ? 'Lewat Tutup' : 'Tersedia') : 'Penuh'}
+                          {statusLabel}
                         </span>
                       </button>
                     );
@@ -943,12 +959,16 @@ export default function PublicBookingPage(): React.JSX.Element {
                     Slot Tersedia
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
-                    Lewat Jam Tutup
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-600" />
+                    Sudah Lewat
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                    Penuh / Lewat
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    Penuh
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    Lewat Jam Tutup
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -1032,7 +1052,10 @@ export default function PublicBookingPage(): React.JSX.Element {
                     )
                   : null;
 
+                const selectedSlotObj = slots.find((s) => s.time_slot === selectedTimeSlot);
+                const isPast = selectedSlotObj ? isSlotPastTime(selectedSlotObj, selectedDate) : false;
                 const isOverrun = Boolean(activeTiming?.isDurationOverrun);
+                const isInvalid = isOverrun || isPast;
 
                 return (
                   <div className="flex items-center gap-3">
@@ -1062,7 +1085,7 @@ export default function PublicBookingPage(): React.JSX.Element {
                         clearErrors();
                         setCurrentStep(5);
                       }}
-                      disabled={!selectedTimeSlot || isOverrun}
+                      disabled={!selectedTimeSlot || isInvalid}
                       className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-6 py-3 rounded-xl flex items-center gap-2 text-sm shadow-md shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                       <span>Lanjut: Isi Data Diri</span>
