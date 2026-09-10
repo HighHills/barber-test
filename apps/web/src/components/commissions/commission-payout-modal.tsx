@@ -55,6 +55,10 @@ export function CommissionPayoutModal({
       setErrorMessage('Akun kasir/manajer Anda belum memiliki profil aktif.');
       return;
     }
+    if (!barberSummary) {
+      setErrorMessage('Data barber penerima komisi tidak valid.');
+      return;
+    }
     if (pendingCommissions.length === 0 || totalPayout <= 0) {
       setErrorMessage('Tidak ada komisi yang perlu dibayarkan.');
       return;
@@ -64,102 +68,30 @@ export function CommissionPayoutModal({
     setIsSubmitting(true);
 
     try {
-      // 1. Fetch COA Accounts: 2100 (Commission Payable) and 1000 (Cash) or 1100 (Bank)
-      const { data: accounts, error: accErr } = await supabase
-        .from('financial_accounts')
-        .select('id, account_code, account_name')
-        .in('account_code', ['2100', '1000', '1100']);
-
-      if (accErr || !accounts || accounts.length === 0) {
-        throw new Error('Gagal mengambil data akun keuangan COA untuk pembayaran komisi.');
-      }
-
-      const commPayableAcc = accounts.find((a) => a.account_code === '2100');
-      const cashAcc = accounts.find((a) => a.account_code === '1000');
-      const bankAcc = accounts.find((a) => a.account_code === '1100');
-
-      if (!commPayableAcc) {
-        throw new Error('Akun liabilitas komisi (2100 Commission Payable) tidak ditemukan di COA.');
-      }
-
-      const payoutAcc = paymentSource === 'CASH' ? cashAcc : bankAcc;
-      if (!payoutAcc) {
-        throw new Error(`Akun kas/bank (${paymentSource === 'CASH' ? '1000' : '1100'}) tidak ditemukan.`);
-      }
-
-      // 2. Generate Journal Entry in DRAFT status
-      const todayStr = new Date().toISOString().split('T')[0];
-      const journalNumber = `JRN-COMM-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-
-      const { data: journal, error: jrnErr } = await supabase
-        .from('journal_entries')
-        .insert({
-          journal_number: journalNumber,
-          journal_date: todayStr,
-          reference_type: 'PAYROLL',
-          reference_id: barberSummary.employee_id,
-          description: `Pembayaran komisi kapster ${barberSummary.employee_name} (${pendingCommissions.length} layanan/produk). Ref: ${referenceNumber || 'TUNAI'}`,
-          status: 'DRAFT',
-          created_by: profile.id,
-        })
-        .select('id, journal_number')
-        .single();
-
-      if (jrnErr || !journal) {
-        throw new Error(`Gagal membuat entri jurnal akuntansi: ${jrnErr?.message}`);
-      }
-
-      // 3. Insert Journal Lines (Level 2 Double-Entry: Debit 2100, Credit 1000/1100)
-      const journalLines = [
-        {
-          journal_entry_id: journal.id,
-          financial_account_id: commPayableAcc.id,
-          outlet_id: currentOutlet.id,
-          debit: totalPayout,
-          credit: 0.0,
-          description: `Pelunasan hutang komisi kapster: ${barberSummary.employee_name}`,
-        },
-        {
-          journal_entry_id: journal.id,
-          financial_account_id: payoutAcc.id,
-          outlet_id: currentOutlet.id,
-          debit: 0.0,
-          credit: totalPayout,
-          description: `Pengeluaran ${payoutAcc.account_name} untuk pembayaran komisi`,
-        },
-      ];
-
-      const { error: linesErr } = await supabase.from('journal_lines').insert(journalLines);
-      if (linesErr) {
-        throw new Error(`Gagal menyimpan baris jurnal debit/kredit: ${linesErr.message}`);
-      }
-
-      // 4. Post Journal Entry via Central Gate RPC (post_journal_entry)
-      const { error: postErr } = await supabase.rpc('post_journal_entry', {
-        p_journal_entry_id: journal.id,
-        p_posted_by: profile.id,
+      const { data, error } = await supabase.rpc('process_commission_payout', {
+        p_employee_id: barberSummary.employee_id,
+        p_outlet_id: currentOutlet.id,
+        p_payment_source: paymentSource,
+        p_reference_number: referenceNumber.trim() || null,
+        p_notes: notes.trim() || null,
       });
 
-      if (postErr) {
-        throw new Error(`Gagal memposting jurnal ke buku besar: ${postErr.message}`);
+      if (error) {
+        throw error;
       }
 
-      // 5. Mark commissions as PAID
-      const commissionIds = pendingCommissions.map((c) => c.id);
-      const { error: commUpdateErr } = await supabase
-        .from('commissions')
-        .update({
-          status: 'PAID',
-          paid_at: new Date().toISOString(),
-        })
-        .in('id', commissionIds);
-
-      if (commUpdateErr) {
-        console.warn('Warning updating commission statuses:', commUpdateErr);
-      }
+      const payoutData = Array.isArray(data) ? data[0] : data;
+      const payoutObj = payoutData as { total_amount?: number | string; journal_number?: string } | null;
+      const payoutAmount =
+        payoutObj?.total_amount != null && !isNaN(Number(payoutObj.total_amount))
+          ? Number(payoutObj.total_amount)
+          : totalPayout;
+      const journalPart = payoutObj?.journal_number
+        ? ` Jurnal Akuntansi ${payoutObj.journal_number} telah terposting.`
+        : '';
 
       onSuccess(
-        `Pembayaran komisi sebesar ${formatCurrency(totalPayout)} untuk ${barberSummary.employee_name} berhasil dicairkan. Jurnal Akuntansi ${journal.journal_number} telah terposting.`
+        `Pembayaran komisi sebesar ${formatCurrency(payoutAmount)} untuk ${barberSummary.employee_name} berhasil dicairkan.${journalPart}`
       );
       onClose();
     } catch (err: unknown) {

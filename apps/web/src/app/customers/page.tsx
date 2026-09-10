@@ -581,21 +581,19 @@ function CustomersContent(): React.JSX.Element {
     setIsSubmitting(true);
     try {
       if (formData.id) {
-        // Update
-        const { error } = await supabase
-          .from('customers')
-          .update({
-            full_name: formData.full_name,
-            phone: formData.phone,
-            email: formData.email || null,
-            gender: formData.gender || null,
-            date_of_birth: formData.date_of_birth || null,
-            tier_id: formData.tier_id || null,
-            preferred_barber_id: formData.preferred_barber_id || null,
-            haircut_preferences: formData.haircut_preferences || {},
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', formData.id);
+        // Update via secure RPC
+        const { error } = await supabase.rpc('update_customer_profile', {
+          p_customer_id: formData.id,
+          p_full_name: formData.full_name,
+          p_phone: formData.phone,
+          p_email: formData.email || null,
+          p_gender: formData.gender || null,
+          p_date_of_birth: formData.date_of_birth || null,
+          p_tier_id: formData.tier_id || null,
+          p_preferred_barber_id: formData.preferred_barber_id || null,
+          p_haircut_preferences: formData.haircut_preferences || {},
+          p_notes: formData.notes || null,
+        });
 
         if (error) throw error;
 
