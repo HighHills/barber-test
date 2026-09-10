@@ -41,11 +41,14 @@ export function PosHeader({
     activeSession,
     refreshData,
     signOut,
+    roleCode,
     isCashier,
     isOwner,
     simulatedRole,
     simulateRole,
   } = usePos();
+
+  const canAccessSettings = roleCode === 'OWNER' || roleCode === 'ADMIN';
 
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -304,7 +307,7 @@ export function PosHeader({
           )}
 
           {/* OWNER & ADMIN: Settings Link */}
-          {isOwner && (
+          {canAccessSettings && (
             <Link
               href="/settings"
               className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
