@@ -92,3 +92,47 @@ export interface LeaveItem {
   created_by?: string | null;
   created_at?: string;
 }
+
+export interface SettingsUserItem {
+  id: string; // profile_id
+  display_name: string;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  employee_id: string | null;
+  role_id: string | null;
+  role_code: string | null;
+  role_name: string | null;
+  role_is_system: boolean | null;
+  outlet_id: string | null;
+  outlet_name: string | null;
+  outlet_code: string | null;
+  created_at?: string;
+}
+
+export interface RoleItem {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  permission_count?: number;
+  permissions?: string[];
+}
+
+export interface PermissionItem {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  module: string;
+  created_at?: string;
+}
+
+export interface RolePermissionItem {
+  role_id: string;
+  permission_id: string;
+}

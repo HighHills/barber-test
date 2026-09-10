@@ -9,6 +9,8 @@ import { OutletSettingsPanel } from './outlet-settings-panel';
 import { StaffSettingsPanel } from './staff-settings-panel';
 import { EmployeeSchedulePanel } from './employee-schedule-panel';
 import { EmployeeLeavePanel } from './employee-leave-panel';
+import { SubaccountsSettingsPanel } from './subaccounts-settings-panel';
+import { RolesPermissionsPanel } from './roles-permissions-panel';
 import {
   Building2,
   Store,
@@ -56,8 +58,8 @@ const sidebarGroups: SidebarGroup[] = [
   {
     groupName: 'AKUN & KEAMANAN',
     items: [
-      { id: 'subaccounts', label: 'Sub-Akun', icon: KeyRound, disabled: true },
-      { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck, disabled: true },
+      { id: 'subaccounts', label: 'Sub-Akun', icon: KeyRound },
+      { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck },
     ],
   },
 ];
@@ -260,6 +262,14 @@ export function SettingsShell(): React.JSX.Element {
 
           {activeSection === 'leaves' && (
             <EmployeeLeavePanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'subaccounts' && (
+            <SubaccountsSettingsPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'roles' && (
+            <RolesPermissionsPanel onNotification={setNotification} />
           )}
         </main>
       </div>
