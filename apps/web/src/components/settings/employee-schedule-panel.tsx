@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type {
   EmployeeItem,
@@ -36,7 +36,7 @@ const defaultWeekDays: Array<{ day_of_week: number; day_name: string }> = [
 export function EmployeeSchedulePanel({
   onNotification,
 }: EmployeeSchedulePanelProps): React.JSX.Element {
-  const { supabase, currentOutlet, availableOutlets } = usePos();
+  const { supabase } = usePos();
 
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
@@ -47,20 +47,83 @@ export function EmployeeSchedulePanel({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // 1. Load Employees & Initial Outlets
+  // 1. Load Employees with active Outlet Assignments via SELECT
   useEffect(() => {
     async function fetchEmployees() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('employees')
-          .select('id, employee_code, full_name, position, is_active')
+          .select(`
+            id,
+            employee_code,
+            full_name,
+            phone,
+            email,
+            position,
+            hire_date,
+            termination_date,
+            is_active,
+            created_at,
+            updated_at,
+            employee_outlets (
+              outlet_id,
+              is_primary,
+              is_active,
+              outlets (
+                code,
+                name
+              )
+            )
+          `)
           .eq('is_active', true)
           .order('full_name');
 
-        const list = (data || []) as EmployeeItem[];
-        setEmployees(list);
-        if (list.length > 0) {
-          setSelectedEmployeeId(list[0].id);
+        if (error) throw error;
+
+        const mapped: EmployeeItem[] = (data || []).map((e: any) => {
+          const assigned = (e.employee_outlets || []).map((ao: any) => {
+            const outObj = Array.isArray(ao.outlets) ? ao.outlets[0] : ao.outlets;
+            return {
+              outlet_id: ao.outlet_id,
+              outlet_code: outObj?.code || 'OUT',
+              outlet_name: outObj?.name || 'Cabang',
+              is_primary: Boolean(ao.is_primary),
+              is_active: Boolean(ao.is_active),
+            };
+          });
+
+          return {
+            id: e.id,
+            employee_code: e.employee_code,
+            full_name: e.full_name,
+            phone: e.phone,
+            email: e.email,
+            position: e.position,
+            hire_date: e.hire_date,
+            termination_date: e.termination_date,
+            is_active: e.is_active,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+            assigned_outlets: assigned,
+          };
+        });
+
+        setEmployees(mapped);
+        if (mapped.length > 0) {
+          const initialEmp = mapped[0];
+          setSelectedEmployeeId(initialEmp.id);
+          const activeAssignments = (initialEmp.assigned_outlets || []).filter((ao) => ao.is_active);
+          const primary = activeAssignments.find((ao) => ao.is_primary);
+          if (primary) {
+            setSelectedOutletId(primary.outlet_id);
+          } else if (activeAssignments.length > 0) {
+            setSelectedOutletId(activeAssignments[0].outlet_id);
+          } else {
+            setSelectedOutletId('');
+          }
+        } else {
+          setSelectedEmployeeId('');
+          setSelectedOutletId('');
         }
       } catch (err) {
         console.error('Error fetching employees for schedule:', err);
@@ -68,13 +131,53 @@ export function EmployeeSchedulePanel({
     }
 
     fetchEmployees();
+  }, [supabase]);
 
-    if (currentOutlet) {
-      setSelectedOutletId(currentOutlet.id);
-    } else if (availableOutlets.length > 0) {
-      setSelectedOutletId(availableOutlets[0].id);
+  // Derived active assigned outlets for currently selected employee
+  const selectedEmployee = useMemo(() => {
+    return employees.find((e) => e.id === selectedEmployeeId) || null;
+  }, [employees, selectedEmployeeId]);
+
+  const activeAssignedOutlets = useMemo(() => {
+    return (selectedEmployee?.assigned_outlets || []).filter((ao) => ao.is_active);
+  }, [selectedEmployee]);
+
+  // Handle employee change with assignment-aware outlet selection
+  const handleEmployeeChange = (newEmpId: string) => {
+    setSelectedEmployeeId(newEmpId);
+    const emp = employees.find((e) => e.id === newEmpId);
+    const activeAssignments = (emp?.assigned_outlets || []).filter((ao) => ao.is_active);
+    const primary = activeAssignments.find((ao) => ao.is_primary);
+    if (primary) {
+      setSelectedOutletId(primary.outlet_id);
+    } else if (activeAssignments.length > 0) {
+      setSelectedOutletId(activeAssignments[0].outlet_id);
+    } else {
+      setSelectedOutletId('');
     }
-  }, [supabase, currentOutlet, availableOutlets]);
+  };
+
+  // Synchronize or validate selectedOutletId when selectedEmployee or activeAssignedOutlets change
+  useEffect(() => {
+    if (!selectedEmployeeId || activeAssignedOutlets.length === 0) {
+      if (selectedOutletId !== '') {
+        setSelectedOutletId('');
+      }
+      return;
+    }
+
+    const isCurrentValid = activeAssignedOutlets.some(
+      (ao) => ao.outlet_id === selectedOutletId
+    );
+    if (!isCurrentValid) {
+      const primary = activeAssignedOutlets.find((ao) => ao.is_primary);
+      if (primary) {
+        setSelectedOutletId(primary.outlet_id);
+      } else {
+        setSelectedOutletId(activeAssignedOutlets[0].outlet_id);
+      }
+    }
+  }, [selectedEmployeeId, activeAssignedOutlets, selectedOutletId]);
 
   // 2. Load Schedules for (employee, outlet) via SELECT
   const loadSchedules = useCallback(async () => {
@@ -181,8 +284,14 @@ export function EmployeeSchedulePanel({
 
   // 3. Save Schedules via Atomic Weekly RPC (save_employee_weekly_schedule)
   const handleSaveAll = async () => {
-    if (!selectedEmployeeId || !selectedOutletId) {
-      setValidationError('Pilih staf dan cabang outlet terlebih dahulu.');
+    if (!selectedEmployeeId || !selectedOutletId || activeAssignedOutlets.length === 0) {
+      setValidationError('Pilih staf dan cabang outlet yang ditugaskan terlebih dahulu.');
+      return;
+    }
+
+    const isAssigned = activeAssignedOutlets.some((ao) => ao.outlet_id === selectedOutletId);
+    if (!isAssigned) {
+      setValidationError('Staff belum ditugaskan aktif pada cabang outlet yang dipilih.');
       return;
     }
 
@@ -310,7 +419,13 @@ export function EmployeeSchedulePanel({
 
         <button
           onClick={handleSaveAll}
-          disabled={isSaving || isLoadingSchedules || !selectedEmployeeId}
+          disabled={
+            isSaving ||
+            isLoadingSchedules ||
+            !selectedEmployeeId ||
+            !selectedOutletId ||
+            activeAssignedOutlets.length === 0
+          }
           className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md shadow-amber-500/20 disabled:opacity-40"
         >
           {isSaving ? (
@@ -334,6 +449,24 @@ export function EmployeeSchedulePanel({
         </div>
       )}
 
+      {selectedEmployeeId && activeAssignedOutlets.length === 0 && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-amber-200 text-sm">
+              Staff ini belum memiliki penugasan cabang aktif
+            </p>
+            <p className="text-slate-300 text-xs leading-relaxed">
+              Silakan atur penugasan cabang untuk{' '}
+              <span className="font-semibold text-white">
+                {selectedEmployee?.full_name || 'staf ini'}
+              </span>{' '}
+              pada menu <span className="text-amber-400 font-medium">Manajemen Staff &amp; Kapster</span>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Selectors Bar */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
         {/* Select Staff */}
@@ -344,7 +477,7 @@ export function EmployeeSchedulePanel({
           </label>
           <select
             value={selectedEmployeeId}
-            onChange={(e) => setSelectedEmployeeId(e.target.value)}
+            onChange={(e) => handleEmployeeChange(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
           >
             {employees.map((emp) => (
@@ -364,13 +497,19 @@ export function EmployeeSchedulePanel({
           <select
             value={selectedOutletId}
             onChange={(e) => setSelectedOutletId(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+            disabled={activeAssignedOutlets.length === 0}
+            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {availableOutlets.map((outlet) => (
-              <option key={outlet.id} value={outlet.id}>
-                {outlet.name} ({outlet.code})
-              </option>
-            ))}
+            {activeAssignedOutlets.length === 0 ? (
+              <option value="">Tidak ada cabang penugasan aktif</option>
+            ) : (
+              activeAssignedOutlets.map((assignment) => (
+                <option key={assignment.outlet_id} value={assignment.outlet_id}>
+                  {assignment.outlet_name} ({assignment.outlet_code})
+                  {assignment.is_primary ? ' — Cabang Utama' : ''}
+                </option>
+              ))
+            )}
           </select>
         </div>
       </div>
@@ -386,8 +525,8 @@ export function EmployeeSchedulePanel({
           <button
             type="button"
             onClick={handleCopyMondayToWeek}
-            disabled={schedules.length === 0}
-            className="text-[11px] font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition"
+            disabled={schedules.length === 0 || !selectedOutletId || activeAssignedOutlets.length === 0}
+            className="text-[11px] font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Copy className="w-3.5 h-3.5" />
             <span>Salin Jadwal Senin ke Sel-Sab</span>
@@ -398,6 +537,16 @@ export function EmployeeSchedulePanel({
           <div className="flex flex-col items-center justify-center p-16 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
             <p className="text-sm text-slate-400">Memuat jadwal kerja...</p>
+          </div>
+        ) : activeAssignedOutlets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-16 text-center space-y-2">
+            <Store className="w-8 h-8 text-slate-600" />
+            <p className="text-sm font-medium text-slate-400">
+              Tidak ada cabang penugasan aktif untuk staf ini
+            </p>
+            <p className="text-xs text-slate-500 max-w-md">
+              Penugasan cabang diperlukan untuk menentukan lokasi operasional jadwal kerja staf.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-800/70">
