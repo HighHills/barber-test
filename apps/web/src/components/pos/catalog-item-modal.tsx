@@ -226,79 +226,7 @@ export function CatalogItemModal({
         });
 
         if (rpcErr) {
-          console.warn('RPC upsert_catalog_service note, attempting direct table fallback:', rpcErr.message);
-          // Fallback: Direct table insert/update
-          let catId = item?.category_id;
-          if (!catId) {
-            // Find or insert category
-            const { data: catFind } = await supabase
-              .from('service_categories')
-              .select('id')
-              .ilike('name', finalCategory)
-              .maybeSingle();
-
-            if (catFind?.id) {
-              catId = catFind.id;
-            } else {
-              const { data: newCat } = await supabase
-                .from('service_categories')
-                .insert({ name: finalCategory, is_active: true })
-                .select('id')
-                .single();
-              catId = newCat?.id;
-            }
-          }
-
-          if (!catId) throw new Error('Gagal memproses kategori layanan.');
-
-          let targetServiceId = item?.id;
-          if (!targetServiceId) {
-            const { data: newSrv, error: srvErr } = await supabase
-              .from('services')
-              .insert({
-                category_id: catId,
-                code: code.trim(),
-                name: name.trim(),
-                description: description.trim() || null,
-                duration_minutes: durationMinutes,
-                is_active: isActive,
-              })
-              .select('id')
-              .single();
-
-            if (srvErr) throw srvErr;
-            targetServiceId = newSrv.id;
-          } else {
-            const { error: updErr } = await supabase
-              .from('services')
-              .update({
-                category_id: catId,
-                code: code.trim(),
-                name: name.trim(),
-                description: description.trim() || null,
-                duration_minutes: durationMinutes,
-                is_active: isActive,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', targetServiceId);
-
-            if (updErr) throw updErr;
-          }
-
-          // Link to service_outlets
-          const { error: soErr } = await supabase
-            .from('service_outlets')
-            .upsert(
-              {
-                service_id: targetServiceId,
-                outlet_id: currentOutlet.id,
-                selling_price: priceNum,
-                is_active: isActive,
-              },
-              { onConflict: 'service_id,outlet_id' }
-            );
-
-          if (soErr) throw soErr;
+          throw new Error(rpcErr.message);
         }
 
         setSuccessMsg(isEditing ? 'Layanan berhasil diperbarui!' : 'Layanan baru berhasil ditambahkan!');
@@ -306,7 +234,7 @@ export function CatalogItemModal({
         // 2. PRODUCT Handling
         const stockNum = parseFloat(initialStock) || 0;
 
-        // Try RPC upsert_catalog_product
+        // Call RPC upsert_catalog_product
         const { error: rpcErr } = await supabase.rpc('upsert_catalog_product', {
           p_id: item?.id || null,
           p_outlet_id: currentOutlet.id,
@@ -322,92 +250,7 @@ export function CatalogItemModal({
         });
 
         if (rpcErr) {
-          console.warn('RPC upsert_catalog_product note, attempting direct table fallback:', rpcErr.message);
-          // Direct table fallback
-          let catId = item?.category_id;
-          if (!catId) {
-            const { data: catFind } = await supabase
-              .from('product_categories')
-              .select('id')
-              .ilike('name', finalCategory)
-              .maybeSingle();
-
-            if (catFind?.id) {
-              catId = catFind.id;
-            } else {
-              const { data: newCat } = await supabase
-                .from('product_categories')
-                .insert({ name: finalCategory, is_active: true })
-                .select('id')
-                .single();
-              catId = newCat?.id;
-            }
-          }
-
-          if (!catId) throw new Error('Gagal memproses kategori produk.');
-
-          let targetProdId = item?.id;
-          if (!targetProdId) {
-            const { data: newPrd, error: prdErr } = await supabase
-              .from('products')
-              .insert({
-                category_id: catId,
-                sku: code.trim(),
-                barcode: barcode.trim() || null,
-                name: name.trim(),
-                description: description.trim() || null,
-                base_unit: baseUnit.trim() || 'pcs',
-                is_active: isActive,
-              })
-              .select('id')
-              .single();
-
-            if (prdErr) throw prdErr;
-            targetProdId = newPrd.id;
-
-            // Seed initial stock
-            if (stockNum > 0) {
-              await supabase
-                .from('outlet_inventory')
-                .upsert({
-                  outlet_id: currentOutlet.id,
-                  product_id: targetProdId,
-                  quantity: stockNum,
-                  average_cost: 0,
-                });
-            }
-          } else {
-            const { error: updErr } = await supabase
-              .from('products')
-              .update({
-                category_id: catId,
-                sku: code.trim(),
-                barcode: barcode.trim() || null,
-                name: name.trim(),
-                description: description.trim() || null,
-                base_unit: baseUnit.trim() || 'pcs',
-                is_active: isActive,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', targetProdId);
-
-            if (updErr) throw updErr;
-          }
-
-          // Link to product_outlets
-          const { error: poErr } = await supabase
-            .from('product_outlets')
-            .upsert(
-              {
-                product_id: targetProdId,
-                outlet_id: currentOutlet.id,
-                selling_price: priceNum,
-                is_active: isActive,
-              },
-              { onConflict: 'product_id,outlet_id' }
-            );
-
-          if (poErr) throw poErr;
+          throw new Error(rpcErr.message);
         }
 
         setSuccessMsg(isEditing ? 'Produk berhasil diperbarui!' : 'Produk baru berhasil ditambahkan!');
@@ -426,14 +269,13 @@ export function CatalogItemModal({
     }
   };
 
-  // Handle Delete / Deactivate
+  // Handle Delete / Deactivate via RPC delete_catalog_item
   const handleDelete = async () => {
     if (!item?.id || !currentOutlet) return;
 
     setDeleting(true);
     setErrorMsg(null);
     try {
-      // 1. Try RPC delete_catalog_item
       const { error: rpcErr } = await supabase.rpc('delete_catalog_item', {
         p_id: item.id,
         p_type: item.type,
@@ -441,21 +283,7 @@ export function CatalogItemModal({
       });
 
       if (rpcErr) {
-        console.warn('RPC delete note, using soft-delete fallback:', rpcErr.message);
-        // Fallback: Soft-deactivate on outlet
-        if (item.type === 'SERVICE') {
-          await supabase
-            .from('service_outlets')
-            .update({ is_active: false })
-            .eq('service_id', item.id)
-            .eq('outlet_id', currentOutlet.id);
-        } else {
-          await supabase
-            .from('product_outlets')
-            .update({ is_active: false })
-            .eq('product_id', item.id)
-            .eq('outlet_id', currentOutlet.id);
-        }
+        throw new Error(rpcErr.message);
       }
 
       setSuccessMsg('Item berhasil dihapus / dinonaktifkan dari katalog cabang.');

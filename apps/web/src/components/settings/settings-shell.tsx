@@ -11,6 +11,11 @@ import { EmployeeSchedulePanel } from './employee-schedule-panel';
 import { EmployeeLeavePanel } from './employee-leave-panel';
 import { SubaccountsSettingsPanel } from './subaccounts-settings-panel';
 import { RolesPermissionsPanel } from './roles-permissions-panel';
+import { ServiceCategoriesPanel } from './service-categories-panel';
+import { ServicesPanel } from './services-panel';
+import { ProductCategoriesPanel } from './product-categories-panel';
+import { ProductsPanel } from './products-panel';
+import { PaymentMethodsPanel } from './payment-methods-panel';
 import {
   Building2,
   Store,
@@ -25,6 +30,11 @@ import {
   AlertCircle,
   X,
   Menu,
+  Scissors,
+  Package,
+  CreditCard,
+  Layers,
+  FolderTree,
 } from 'lucide-react';
 
 interface SidebarItem {
@@ -45,6 +55,16 @@ const sidebarGroups: SidebarGroup[] = [
     items: [
       { id: 'business', label: 'Informasi Bisnis', icon: Building2 },
       { id: 'outlets', label: 'Outlet & Cabang', icon: Store },
+    ],
+  },
+  {
+    groupName: 'POS & ETALASE',
+    items: [
+      { id: 'service-categories', label: 'Kategori Layanan', icon: Layers },
+      { id: 'services', label: 'Layanan', icon: Scissors },
+      { id: 'product-categories', label: 'Kategori Produk', icon: FolderTree },
+      { id: 'products', label: 'Produk & Retail', icon: Package },
+      { id: 'payment-methods', label: 'Metode Pembayaran', icon: CreditCard },
     ],
   },
   {
@@ -250,6 +270,26 @@ export function SettingsShell(): React.JSX.Element {
 
           {activeSection === 'outlets' && (
             <OutletSettingsPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'service-categories' && (
+            <ServiceCategoriesPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'services' && (
+            <ServicesPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'product-categories' && (
+            <ProductCategoriesPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'products' && (
+            <ProductsPanel onNotification={setNotification} />
+          )}
+
+          {activeSection === 'payment-methods' && (
+            <PaymentMethodsPanel onNotification={setNotification} />
           )}
 
           {activeSection === 'staff' && (
