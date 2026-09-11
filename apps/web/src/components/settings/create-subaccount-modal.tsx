@@ -82,8 +82,8 @@ export function CreateSubaccountModal({
       return;
     }
 
-    if (!password || password.length < 6) {
-      setFormError('Password akun kasir minimal 6 karakter.');
+    if (!password || password.length < 8) {
+      setFormError('Password akun kasir minimal 8 karakter.');
       return;
     }
 
@@ -226,10 +226,10 @@ export function CreateSubaccountModal({
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
-                minLength={6}
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimal 6 karakter"
+                placeholder="Minimal 8 karakter"
                 className="w-full pl-9 pr-10 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
               />
               <button
