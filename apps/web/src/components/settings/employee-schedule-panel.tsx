@@ -19,6 +19,36 @@ import {
   Copy,
 } from 'lucide-react';
 
+interface EmployeeScheduleOutletRelation {
+  code: string | null;
+  name: string | null;
+}
+
+interface EmployeeScheduleAssignmentRow {
+  outlet_id: string;
+  is_primary: boolean | null;
+  is_active: boolean | null;
+  outlets:
+    | EmployeeScheduleOutletRelation
+    | EmployeeScheduleOutletRelation[]
+    | null;
+}
+
+interface EmployeeScheduleEmployeeRow {
+  id: string;
+  employee_code: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  position: string;
+  hire_date: string;
+  termination_date: string | null;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  employee_outlets: EmployeeScheduleAssignmentRow[] | null;
+}
+
 interface EmployeeSchedulePanelProps {
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
 }
@@ -80,8 +110,10 @@ export function EmployeeSchedulePanel({
 
         if (error) throw error;
 
-        const mapped: EmployeeItem[] = (data || []).map((e: any) => {
-          const assigned = (e.employee_outlets || []).map((ao: any) => {
+        const rawRows = (data || []) as EmployeeScheduleEmployeeRow[];
+        const mapped: EmployeeItem[] = rawRows.map((e: EmployeeScheduleEmployeeRow) => {
+          const rawAssignments = e.employee_outlets || [];
+          const assigned = rawAssignments.map((ao: EmployeeScheduleAssignmentRow) => {
             const outObj = Array.isArray(ao.outlets) ? ao.outlets[0] : ao.outlets;
             return {
               outlet_id: ao.outlet_id,
@@ -102,8 +134,8 @@ export function EmployeeSchedulePanel({
             hire_date: e.hire_date,
             termination_date: e.termination_date,
             is_active: e.is_active,
-            created_at: e.created_at,
-            updated_at: e.updated_at,
+            created_at: e.created_at || undefined,
+            updated_at: e.updated_at || undefined,
             assigned_outlets: assigned,
           };
         });
