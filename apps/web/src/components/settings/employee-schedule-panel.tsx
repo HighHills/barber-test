@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { EmployeeItem, ScheduleDayItem } from '../../types/settings';
+import type {
+  EmployeeItem,
+  ScheduleDayItem,
+  WeeklySchedulePayloadItem,
+} from '../../types/settings';
 import {
   CalendarDays,
   Save,
@@ -175,7 +179,7 @@ export function EmployeeSchedulePanel({
     );
   };
 
-  // 3. Save Schedules via RPC (save_employee_schedule)
+  // 3. Save Schedules via Atomic Weekly RPC (save_employee_weekly_schedule)
   const handleSaveAll = async () => {
     if (!selectedEmployeeId || !selectedOutletId) {
       setValidationError('Pilih staf dan cabang outlet terlebih dahulu.');
@@ -185,27 +189,30 @@ export function EmployeeSchedulePanel({
     // Validation
     for (const day of schedules) {
       if (day.is_active) {
-        if (day.start_time >= day.end_time) {
+        if (!day.start_time || !day.end_time || day.start_time >= day.end_time) {
           setValidationError(
-            `Jam kerja hari ${day.day_name} tidak valid: Jam selesai (${day.end_time}) harus lebih besar dari jam mulai (${day.start_time}).`
+            `Jam kerja hari ${day.day_name} tidak valid: Jam selesai (${day.end_time || '-'}) harus lebih besar dari jam mulai (${day.start_time || '-'}).`
           );
           return;
         }
 
         if (day.has_break) {
-          if (!day.break_start || !day.break_end) {
+          const bStart = day.break_start?.trim();
+          const bEnd = day.break_end?.trim();
+
+          if (!bStart || !bEnd) {
             setValidationError(
               `Jam istirahat hari ${day.day_name} belum diisi lengkap.`
             );
             return;
           }
-          if (day.break_start >= day.break_end) {
+          if (bStart >= bEnd) {
             setValidationError(
-              `Jam istirahat hari ${day.day_name} tidak valid: Selesai istirahat (${day.break_end}) harus setelah mulai istirahat (${day.break_start}).`
+              `Jam istirahat hari ${day.day_name} tidak valid: Selesai istirahat (${bEnd}) harus setelah mulai istirahat (${bStart}).`
             );
             return;
           }
-          if (day.break_start < day.start_time || day.break_end > day.end_time) {
+          if (bStart < day.start_time || bEnd > day.end_time) {
             setValidationError(
               `Jam istirahat hari ${day.day_name} harus berada di antara jam kerja (${day.start_time} - ${day.end_time}).`
             );
@@ -215,26 +222,59 @@ export function EmployeeSchedulePanel({
       }
     }
 
+    // Build 7-day atomic payload (days 0..6: Sunday through Saturday)
+    const allDaysOfWeek = [0, 1, 2, 3, 4, 5, 6];
+    const schedulesPayload: WeeklySchedulePayloadItem[] = allDaysOfWeek.map((dow) => {
+      const day = schedules.find((s) => s.day_of_week === dow);
+      if (!day) {
+        return {
+          day_of_week: dow,
+          start_time: '09:00',
+          end_time: '21:00',
+          break_start: null,
+          break_end: null,
+          is_active: false,
+        };
+      }
+
+      const isActive = Boolean(day.is_active);
+      let startTime = day.start_time || '09:00';
+      let endTime = day.end_time || '21:00';
+
+      // For inactive / off days, ensure start_time < end_time so it always passes backend time checks
+      if (!isActive && startTime >= endTime) {
+        startTime = '09:00';
+        endTime = '21:00';
+      }
+
+      const hasBreak =
+        isActive &&
+        Boolean(day.has_break) &&
+        Boolean(day.break_start?.trim()) &&
+        Boolean(day.break_end?.trim());
+
+      return {
+        day_of_week: day.day_of_week,
+        start_time: startTime,
+        end_time: endTime,
+        break_start: hasBreak ? day.break_start.trim() : null,
+        break_end: hasBreak ? day.break_end.trim() : null,
+        is_active: isActive,
+      };
+    });
+
     setValidationError(null);
     setIsSaving(true);
 
     try {
-      // Iterate through each day and invoke RPC
-      for (const day of schedules) {
-        const { error } = await supabase.rpc('save_employee_schedule', {
-          p_schedule_id: day.id || null,
-          p_employee_id: selectedEmployeeId,
-          p_outlet_id: selectedOutletId,
-          p_day_of_week: day.day_of_week,
-          p_start_time: day.start_time,
-          p_end_time: day.end_time,
-          p_break_start: day.has_break ? day.break_start || null : null,
-          p_break_end: day.has_break ? day.break_end || null : null,
-          p_is_active: day.is_active,
-        });
+      // Single atomic RPC invocation for the entire week
+      const { error } = await supabase.rpc('save_employee_weekly_schedule', {
+        p_employee_id: selectedEmployeeId,
+        p_outlet_id: selectedOutletId,
+        p_schedules: schedulesPayload,
+      });
 
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       const empName =
         employees.find((e) => e.id === selectedEmployeeId)?.full_name || 'Staf';

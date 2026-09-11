@@ -81,6 +81,15 @@ export interface ScheduleDayItem {
   break_end: string;   // "HH:MM"
 }
 
+export interface WeeklySchedulePayloadItem {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  break_start: string | null;
+  break_end: string | null;
+  is_active: boolean;
+}
+
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface LeaveItem {
