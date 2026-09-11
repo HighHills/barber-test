@@ -187,11 +187,15 @@ function SubaccountsContent(): React.JSX.Element {
       });
 
       if (rpcErr) {
-        // Fallback: direct profiles update
-        await supabase
-          .from('profiles')
-          .update({ is_active: newStatus })
-          .eq('id', cashier.id);
+        // Fallback: try modern role-agnostic RPC set_user_active
+        const { error: fallbackErr } = await supabase.rpc('set_user_active', {
+          p_profile_id: cashier.id,
+          p_is_active: newStatus,
+        });
+
+        if (fallbackErr) {
+          throw new Error(fallbackErr.message || rpcErr.message);
+        }
       }
 
       setCashiers((prev) =>

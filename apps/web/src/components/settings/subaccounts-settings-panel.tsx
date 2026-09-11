@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { SettingsUserItem, RoleItem, OutletItem } from '../../types/settings';
 import { UserRoleAssignmentModal } from './user-role-assignment-modal';
+import { CreateSubaccountModal } from './create-subaccount-modal';
 import {
   KeyRound,
   Search,
@@ -18,6 +19,7 @@ import {
   CheckCircle2,
   XCircle,
   Globe,
+  UserPlus,
 } from 'lucide-react';
 
 interface SubaccountsSettingsPanelProps {
@@ -42,6 +44,7 @@ export function SubaccountsSettingsPanel({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
   // Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState<boolean>(false);
   const [selectedUser, setSelectedUser] = useState<SettingsUserItem | null>(null);
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
@@ -179,6 +182,15 @@ export function SubaccountsSettingsPanel({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition text-xs font-bold shadow-md shadow-amber-500/20"
+            title="Tambah Sub-Akun Pengguna Baru"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Tambah Sub-Akun</span>
+          </button>
+
           <button
             onClick={() => loadData(true)}
             disabled={isRefreshing || isLoading}
@@ -474,6 +486,16 @@ export function SubaccountsSettingsPanel({
           setSelectedUser(null);
         }}
         user={selectedUser}
+        roles={roles}
+        outlets={outlets}
+        onSuccess={() => loadData(true)}
+        onNotification={onNotification}
+      />
+
+      {/* Create Subaccount Modal */}
+      <CreateSubaccountModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
         roles={roles}
         outlets={outlets}
         onSuccess={() => loadData(true)}
