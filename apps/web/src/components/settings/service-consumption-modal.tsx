@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { ServiceItem, ServiceConsumptionItem, ProductItem } from '../../types/settings';
 import {
@@ -29,9 +29,15 @@ export function ServiceConsumptionModal({
 }: ServiceConsumptionModalProps): React.JSX.Element | null {
   const { supabase, refreshData } = usePos();
 
-  const [consumptions, setConsumptions] = useState<ServiceConsumptionItem[]>([]);
+  const [allConsumptions, setAllConsumptions] = useState<ServiceConsumptionItem[]>([]);
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Filter only active consumptions for UI display
+  const activeConsumptions = useMemo(
+    () => allConsumptions.filter((c) => c.is_active),
+    [allConsumptions]
+  );
 
   // New consumption form state
   const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -55,7 +61,7 @@ export function ServiceConsumptionModal({
         .order('name');
       if (prodErr) throw prodErr;
 
-      // 2. Fetch service consumptions
+      // 2. Fetch service consumptions (both active and inactive for duplicate/reactivation lookup)
       const { data: consData, error: consErr } = await supabase
         .from('service_consumptions')
         .select(`
@@ -66,8 +72,7 @@ export function ServiceConsumptionModal({
           is_active,
           products (name, sku, base_unit)
         `)
-        .eq('service_id', service.id)
-        .eq('is_active', true);
+        .eq('service_id', service.id);
       if (consErr) throw consErr;
 
       const formattedCons: ServiceConsumptionItem[] = (consData || []).map((c: any) => ({
@@ -82,7 +87,7 @@ export function ServiceConsumptionModal({
       }));
 
       setProducts((prodData || []) as ProductItem[]);
-      setConsumptions(formattedCons);
+      setAllConsumptions(formattedCons);
 
       if (prodData && prodData.length > 0 && !selectedProductId) {
         setSelectedProductId(prodData[0].id);
@@ -122,8 +127,8 @@ export function ServiceConsumptionModal({
       return;
     }
 
-    // Check if already assigned
-    const existing = consumptions.find((c) => c.product_id === selectedProductId);
+    // Check if already assigned (active or inactive, allowing reactivation)
+    const existing = allConsumptions.find((c) => c.product_id === selectedProductId);
     const p_consumption_id = existing ? existing.id : null;
 
     setIsSubmitting(true);
@@ -286,10 +291,10 @@ export function ServiceConsumptionModal({
             </div>
           </form>
 
-          {/* Current Consumptions List */}
+          {/* Current Consumptions List (Only Active) */}
           <div className="space-y-2">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Daftar Bahan Yang Terpakai ({consumptions.length})
+              Daftar Bahan Yang Terpakai ({activeConsumptions.length})
             </h3>
 
             {isLoading ? (
@@ -297,14 +302,14 @@ export function ServiceConsumptionModal({
                 <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
                 <p>Memuat daftar konsumsi bahan...</p>
               </div>
-            ) : consumptions.length === 0 ? (
+            ) : activeConsumptions.length === 0 ? (
               <div className="p-6 bg-slate-950/40 border border-slate-800 rounded-xl text-center text-slate-500">
                 <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>Layanan ini belum memiliki konfigurasi pemakaian bahan produk.</p>
               </div>
             ) : (
               <div className="space-y-1.5">
-                {consumptions.map((item) => {
+                {activeConsumptions.map((item) => {
                   const isDeleting = deletingId === item.id;
 
                   return (

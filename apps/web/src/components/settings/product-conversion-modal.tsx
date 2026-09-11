@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { ProductItem, ProductUnitConversionItem } from '../../types/settings';
 import {
@@ -29,8 +29,14 @@ export function ProductConversionModal({
 }: ProductConversionModalProps): React.JSX.Element | null {
   const { supabase, refreshData } = usePos();
 
-  const [conversions, setConversions] = useState<ProductUnitConversionItem[]>([]);
+  const [allConversions, setAllConversions] = useState<ProductUnitConversionItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Filter only active conversions for UI display
+  const activeConversions = useMemo(
+    () => allConversions.filter((c) => c.is_active),
+    [allConversions]
+  );
 
   // Form states for new conversion
   const [unitName, setUnitName] = useState<string>('');
@@ -39,7 +45,7 @@ export function ProductConversionModal({
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // 1. Fetch conversions for product (SELECT Only)
+  // 1. Fetch conversions for product (both active and inactive for reactivation lookup)
   const loadData = useCallback(async () => {
     if (!product) return;
     setIsLoading(true);
@@ -50,7 +56,6 @@ export function ProductConversionModal({
         .from('product_unit_conversions')
         .select('*')
         .eq('product_id', product.id)
-        .eq('is_active', true)
         .order('multiplier_to_base', { ascending: true });
 
       if (error) throw error;
@@ -65,7 +70,7 @@ export function ProductConversionModal({
         updated_at: c.updated_at,
       }));
 
-      setConversions(formatted);
+      setAllConversions(formatted);
     } catch (err: unknown) {
       console.error('Error loading product conversions:', err);
       const msg = err instanceof Error ? err.message : 'Gagal memuat konversi satuan';
@@ -88,7 +93,8 @@ export function ProductConversionModal({
     e.preventDefault();
     setFormError(null);
 
-    const trimmedUnit = unitName.trim().toUpperCase();
+    // Preserve user casing, only trim whitespace
+    const trimmedUnit = unitName.trim();
     if (!trimmedUnit) {
       setFormError('Nama satuan kemasan wajib diisi.');
       return;
@@ -100,13 +106,16 @@ export function ProductConversionModal({
       return;
     }
 
-    if (trimmedUnit.toLowerCase() === product.base_unit.toLowerCase()) {
-      setFormError(`Satuan "${trimmedUnit}" sama dengan base unit produk. Tidak perlu dikonversi.`);
+    // Base unit validation (case-insensitive)
+    if (trimmedUnit.toLowerCase() === product.base_unit.trim().toLowerCase()) {
+      setFormError(`Satuan "${trimmedUnit}" sama dengan base unit produk (${product.base_unit}). Tidak perlu dikonversi.`);
       return;
     }
 
-    // Check existing
-    const existing = conversions.find((c) => c.unit_name.toUpperCase() === trimmedUnit);
+    // Check existing across all conversions (case-insensitive matching for reactivation/update)
+    const existing = allConversions.find(
+      (c) => c.unit_name.trim().toLowerCase() === trimmedUnit.toLowerCase()
+    );
     const p_conversion_id = existing ? existing.id : null;
 
     setIsSubmitting(true);
@@ -228,9 +237,9 @@ export function ProductConversionModal({
                 <input
                   type="text"
                   required
-                  placeholder="LITER / BOTOL / PACK"
+                  placeholder="Liter / Botol / Pack"
                   value={unitName}
-                  onChange={(e) => setUnitName(e.target.value.toUpperCase())}
+                  onChange={(e) => setUnitName(e.target.value)}
                   className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -272,10 +281,10 @@ export function ProductConversionModal({
             </div>
           </form>
 
-          {/* Current Conversions List */}
+          {/* Current Conversions List (Only Active) */}
           <div className="space-y-2">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Daftar Satuan Konversi Terdaftar ({conversions.length})
+              Daftar Satuan Konversi Terdaftar ({activeConversions.length})
             </h3>
 
             {isLoading ? (
@@ -283,14 +292,14 @@ export function ProductConversionModal({
                 <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
                 <p>Memuat daftar konversi...</p>
               </div>
-            ) : conversions.length === 0 ? (
+            ) : activeConversions.length === 0 ? (
               <div className="p-6 bg-slate-950/40 border border-slate-800 rounded-xl text-center text-slate-500">
                 <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>Produk ini hanya menggunakan base unit tunggal ({product.base_unit}).</p>
               </div>
             ) : (
               <div className="space-y-1.5">
-                {conversions.map((item) => {
+                {activeConversions.map((item) => {
                   const isDeleting = deletingId === item.id;
 
                   return (
