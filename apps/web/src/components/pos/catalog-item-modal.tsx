@@ -54,7 +54,7 @@ export function CatalogItemModal({
   onClose,
   onSuccess,
 }: CatalogItemModalProps): React.JSX.Element | null {
-  const { supabase, currentOutlet } = usePos();
+  const { supabase, currentOutlet, refreshData } = usePos();
   const isEditing = Boolean(item && item.id);
 
   // Form State
@@ -212,50 +212,159 @@ export function CatalogItemModal({
 
     try {
       if (itemType === 'SERVICE') {
-        // 1. Try RPC upsert_catalog_service
-        const { error: rpcErr } = await supabase.rpc('upsert_catalog_service', {
-          p_id: item?.id || null,
-          p_outlet_id: currentOutlet.id,
-          p_name: name.trim(),
+        // 1. Resolve service category ID from service_categories
+        let resolvedCategoryId: string | null = null;
+
+        if (!isNewCategory) {
+          const { data: catData } = await supabase
+            .from('service_categories')
+            .select('id')
+            .eq('name', finalCategory)
+            .limit(1)
+            .maybeSingle();
+
+          if (catData?.id) {
+            resolvedCategoryId = catData.id;
+          }
+        }
+
+        // If creating a new category or not found in DB, call save_service_category RPC
+        if (!resolvedCategoryId) {
+          const { data: newCatData, error: catErr } = await supabase.rpc('save_service_category', {
+            p_category_id: null,
+            p_name: finalCategory,
+            p_description: null,
+            p_sort_order: 0,
+            p_is_active: true,
+          });
+
+          if (catErr) throw catErr;
+
+          resolvedCategoryId =
+            (typeof newCatData === 'string' ? newCatData : (newCatData as any)?.id) || null;
+
+          if (!resolvedCategoryId) {
+            const { data: refetchedCat, error: refetchErr } = await supabase
+              .from('service_categories')
+              .select('id')
+              .eq('name', finalCategory)
+              .limit(1)
+              .single();
+            if (refetchErr) throw refetchErr;
+            resolvedCategoryId = refetchedCat.id;
+          }
+        }
+
+        // 2. Call save_service RPC
+        const { data: savedServiceId, error: srvErr } = await supabase.rpc('save_service', {
+          p_service_id: item?.id || null,
+          p_category_id: resolvedCategoryId,
           p_code: code.trim(),
-          p_category_name: finalCategory,
-          p_duration_minutes: durationMinutes,
-          p_selling_price: priceNum,
+          p_name: name.trim(),
           p_description: description.trim() || null,
+          p_duration_minutes: durationMinutes,
+          p_default_cost_price: 0,
           p_is_active: isActive,
         });
 
-        if (rpcErr) {
-          throw new Error(rpcErr.message);
+        if (srvErr) throw srvErr;
+
+        const targetServiceId =
+          (typeof savedServiceId === 'string' ? savedServiceId : (savedServiceId as any)?.id) ||
+          item?.id;
+
+        // 3. Call save_service_outlet RPC
+        const { error: soErr } = await supabase.rpc('save_service_outlet', {
+          p_service_id: targetServiceId,
+          p_outlet_id: currentOutlet.id,
+          p_selling_price: priceNum,
+          p_is_active: isActive,
+        });
+
+        if (soErr) throw soErr;
+
+        setSuccessMsg(
+          isEditing ? 'Layanan berhasil diperbarui!' : 'Layanan baru berhasil ditambahkan!'
+        );
+      } else {
+        // 1. Resolve product category ID from product_categories
+        let resolvedCategoryId: string | null = null;
+
+        if (!isNewCategory) {
+          const { data: catData } = await supabase
+            .from('product_categories')
+            .select('id')
+            .eq('name', finalCategory)
+            .limit(1)
+            .maybeSingle();
+
+          if (catData?.id) {
+            resolvedCategoryId = catData.id;
+          }
         }
 
-        setSuccessMsg(isEditing ? 'Layanan berhasil diperbarui!' : 'Layanan baru berhasil ditambahkan!');
-      } else {
-        // 2. PRODUCT Handling
-        const stockNum = parseFloat(initialStock) || 0;
+        // If category is new or not found in DB, call save_product_category RPC
+        if (!resolvedCategoryId) {
+          const { data: newCatData, error: catErr } = await supabase.rpc('save_product_category', {
+            p_category_id: null,
+            p_name: finalCategory,
+            p_description: null,
+            p_sort_order: 0,
+            p_is_active: true,
+          });
 
-        // Call RPC upsert_catalog_product
-        const { error: rpcErr } = await supabase.rpc('upsert_catalog_product', {
-          p_id: item?.id || null,
-          p_outlet_id: currentOutlet.id,
-          p_name: name.trim(),
+          if (catErr) throw catErr;
+
+          resolvedCategoryId =
+            (typeof newCatData === 'string' ? newCatData : (newCatData as any)?.id) || null;
+
+          if (!resolvedCategoryId) {
+            const { data: refetchedCat, error: refetchErr } = await supabase
+              .from('product_categories')
+              .select('id')
+              .eq('name', finalCategory)
+              .limit(1)
+              .single();
+            if (refetchErr) throw refetchErr;
+            resolvedCategoryId = refetchedCat.id;
+          }
+        }
+
+        // 2. Call save_product RPC (initial stock is preserved in UI only, not directly mutated here)
+        const { data: savedProductId, error: prdErr } = await supabase.rpc('save_product', {
+          p_product_id: item?.id || null,
+          p_category_id: resolvedCategoryId,
           p_sku: code.trim(),
           p_barcode: barcode.trim() || null,
-          p_category_name: finalCategory,
-          p_base_unit: baseUnit.trim() || 'pcs',
-          p_selling_price: priceNum,
-          p_initial_stock: isEditing ? 0 : stockNum,
+          p_name: name.trim(),
           p_description: description.trim() || null,
+          p_base_unit: baseUnit.trim() || 'pcs',
+          p_default_cost_price: 0,
           p_is_active: isActive,
         });
 
-        if (rpcErr) {
-          throw new Error(rpcErr.message);
-        }
+        if (prdErr) throw prdErr;
 
-        setSuccessMsg(isEditing ? 'Produk berhasil diperbarui!' : 'Produk baru berhasil ditambahkan!');
+        const targetProductId =
+          (typeof savedProductId === 'string' ? savedProductId : (savedProductId as any)?.id) ||
+          item?.id;
+
+        // 3. Call save_product_outlet RPC
+        const { error: poErr } = await supabase.rpc('save_product_outlet', {
+          p_product_id: targetProductId,
+          p_outlet_id: currentOutlet.id,
+          p_selling_price: priceNum,
+          p_is_active: isActive,
+        });
+
+        if (poErr) throw poErr;
+
+        setSuccessMsg(
+          isEditing ? 'Produk berhasil diperbarui!' : 'Produk baru berhasil ditambahkan!'
+        );
       }
 
+      await refreshData();
       setTimeout(() => {
         onSuccess();
         onClose();
@@ -269,31 +378,87 @@ export function CatalogItemModal({
     }
   };
 
-  // Handle Delete / Deactivate via RPC delete_catalog_item
+  // Handle Delete / Deactivate via Phase 2A RPCs (soft-delete)
   const handleDelete = async () => {
     if (!item?.id || !currentOutlet) return;
 
     setDeleting(true);
     setErrorMsg(null);
     try {
-      const { error: rpcErr } = await supabase.rpc('delete_catalog_item', {
-        p_id: item.id,
-        p_type: item.type,
-        p_outlet_id: currentOutlet.id,
-      });
+      if (item.type === 'SERVICE') {
+        // Fetch current service to preserve attributes
+        const { data: srvData } = await supabase
+          .from('services')
+          .select('id, category_id, code, name, description, duration_minutes, default_cost_price')
+          .eq('id', item.id)
+          .maybeSingle();
 
-      if (rpcErr) {
-        throw new Error(rpcErr.message);
+        // 1. Deactivate service master
+        const { error: srvErr } = await supabase.rpc('save_service', {
+          p_service_id: item.id,
+          p_category_id: srvData?.category_id || item.category_id,
+          p_code: srvData?.code || item.code,
+          p_name: srvData?.name || item.name,
+          p_description: srvData?.description || item.description || null,
+          p_duration_minutes: srvData?.duration_minutes || item.duration_minutes || 30,
+          p_default_cost_price: srvData?.default_cost_price ?? 0,
+          p_is_active: false,
+        });
+
+        if (srvErr) throw srvErr;
+
+        // 2. Deactivate outlet service pricing
+        const { error: soErr } = await supabase.rpc('save_service_outlet', {
+          p_service_id: item.id,
+          p_outlet_id: currentOutlet.id,
+          p_selling_price: item.selling_price || 0,
+          p_is_active: false,
+        });
+
+        if (soErr) throw soErr;
+      } else {
+        // Fetch current product to preserve attributes
+        const { data: prdData } = await supabase
+          .from('products')
+          .select('id, category_id, sku, barcode, name, description, base_unit, default_cost_price')
+          .eq('id', item.id)
+          .maybeSingle();
+
+        // 1. Deactivate product master
+        const { error: prdErr } = await supabase.rpc('save_product', {
+          p_product_id: item.id,
+          p_category_id: prdData?.category_id || item.category_id,
+          p_sku: prdData?.sku || item.code,
+          p_barcode: prdData?.barcode || item.barcode || null,
+          p_name: prdData?.name || item.name,
+          p_description: prdData?.description || item.description || null,
+          p_base_unit: prdData?.base_unit || item.base_unit || 'pcs',
+          p_default_cost_price: prdData?.default_cost_price ?? 0,
+          p_is_active: false,
+        });
+
+        if (prdErr) throw prdErr;
+
+        // 2. Deactivate outlet product pricing
+        const { error: poErr } = await supabase.rpc('save_product_outlet', {
+          p_product_id: item.id,
+          p_outlet_id: currentOutlet.id,
+          p_selling_price: item.selling_price || 0,
+          p_is_active: false,
+        });
+
+        if (poErr) throw poErr;
       }
 
-      setSuccessMsg('Item berhasil dihapus / dinonaktifkan dari katalog cabang.');
+      setSuccessMsg('Item berhasil dinonaktifkan dari katalog cabang.');
+      await refreshData();
       setTimeout(() => {
         onSuccess();
         onClose();
       }, 600);
     } catch (err: unknown) {
       console.error('Catalog delete error:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal menghapus item katalog.';
+      const msg = err instanceof Error ? err.message : 'Gagal menonaktifkan item katalog.';
       setErrorMsg(msg);
     } finally {
       setDeleting(false);
