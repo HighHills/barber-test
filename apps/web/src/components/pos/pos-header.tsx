@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { usePos } from '../../context/pos-context';
 import {
   Store,
@@ -22,11 +23,12 @@ import {
   Receipt,
   Calendar,
   Settings,
+  ArrowLeft,
 } from 'lucide-react';
 
 interface PosHeaderProps {
-  onOpenSessionClick: () => void;
-  onCloseSessionClick: () => void;
+  onOpenSessionClick?: () => void;
+  onCloseSessionClick?: () => void;
 }
 
 export function PosHeader({
@@ -50,8 +52,21 @@ export function PosHeader({
 
   const canAccessSettings = roleCode === 'OWNER' || roleCode === 'ADMIN';
 
+  const pathname = usePathname();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const getNavLinkClass = (href: string, extraStyle?: string) => {
+    const isActive = pathname === href;
+    if (isActive) {
+      return `flex items-center gap-1.5 text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1.5 rounded-lg border border-amber-500/50 font-semibold transition-colors shadow-xs ${
+        extraStyle || ''
+      }`;
+    }
+    return `flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors ${
+      extraStyle || ''
+    }`;
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -81,8 +96,12 @@ export function PosHeader({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Left Section: Logo & Outlet Selector */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
+          <Link
+            href="/"
+            className="flex items-center gap-2 group cursor-pointer"
+            title="Ke Layar Kasir POS"
+          >
+            <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm group-hover:bg-amber-400 transition-colors">
               💈
             </span>
             <div className="hidden sm:block">
@@ -91,7 +110,18 @@ export function PosHeader({
               </h1>
               <p className="text-[11px] text-amber-400 font-medium">Sistem Kasir Terintegrasi</p>
             </div>
-          </div>
+          </Link>
+
+          {pathname !== '/' && (
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              title="Kembali ke Layar Kasir POS"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline font-medium">Kasir POS</span>
+            </Link>
+          )}
 
           <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block" />
 
@@ -153,28 +183,32 @@ export function PosHeader({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
               <span className="font-semibold">Laci Kasir BUKA</span>
-              <button
-                onClick={onCloseSessionClick}
-                className="ml-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600 transition-colors flex items-center gap-1"
-                title="Tutup sesi kasir shift ini"
-              >
-                <Lock className="w-3 h-3 text-amber-400" />
-                <span>Tutup Kasir</span>
-              </button>
+              {onCloseSessionClick && (
+                <button
+                  onClick={onCloseSessionClick}
+                  className="ml-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600 transition-colors flex items-center gap-1"
+                  title="Tutup sesi kasir shift ini"
+                >
+                  <Lock className="w-3 h-3 text-amber-400" />
+                  <span>Tutup Kasir</span>
+                </button>
+              )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs text-amber-300">
-              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-              <span className="font-semibold">Laci Kasir TUTUP</span>
-              <button
-                onClick={onOpenSessionClick}
-                className="ml-1 text-[11px] bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-2 py-0.5 rounded shadow-sm transition-colors flex items-center gap-1"
-                title="Buka sesi kasir dengan modal awal"
-              >
-                <Unlock className="w-3 h-3" />
-                <span>Buka Kasir</span>
-              </button>
-            </div>
+            onOpenSessionClick && (
+              <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs text-amber-300">
+                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                <span className="font-semibold">Laci Kasir TUTUP</span>
+                <button
+                  onClick={onOpenSessionClick}
+                  className="ml-1 text-[11px] bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-2 py-0.5 rounded shadow-sm transition-colors flex items-center gap-1"
+                  title="Buka sesi kasir dengan modal awal"
+                >
+                  <Unlock className="w-3 h-3" />
+                  <span>Buka Kasir</span>
+                </button>
+              </div>
+            )
           )}
         </div>
 
@@ -189,7 +223,7 @@ export function PosHeader({
           {/* Queue & Booking Link */}
           <Link
             href="/queue"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/queue')}
             title="Sistem Antrean Kursi & Janji Temu"
           >
             <Scissors className="w-3.5 h-3.5 text-amber-400" />
@@ -211,7 +245,7 @@ export function PosHeader({
           {/* History Link */}
           <Link
             href="/history"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/history')}
             title="Riwayat Transaksi Penjualan"
           >
             <History className="w-3.5 h-3.5 text-amber-400" />
@@ -221,7 +255,7 @@ export function PosHeader({
           {/* Inventory Link */}
           <Link
             href="/inventory"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/inventory')}
             title="Manajemen Persediaan & Stok Cabang"
           >
             <Package className="w-3.5 h-3.5 text-amber-400" />
@@ -232,7 +266,7 @@ export function PosHeader({
           {!isCashier && (
             <Link
               href="/purchases"
-              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              className={getNavLinkClass('/purchases')}
               title="Manajemen Pembelian Stok & Hutang Supplier"
             >
               <Truck className="w-3.5 h-3.5 text-blue-400" />
@@ -243,7 +277,7 @@ export function PosHeader({
           {/* Expenses & Petty Cash Link */}
           <Link
             href="/expenses"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/expenses')}
             title="Biaya Operasional & Kas Kecil (Petty Cash)"
           >
             <Receipt className="w-3.5 h-3.5 text-amber-400" />
@@ -253,7 +287,7 @@ export function PosHeader({
           {/* Commissions Link */}
           <Link
             href="/commissions"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/commissions')}
             title="Komisi & Performa Kapster Cabang"
           >
             <Coins className="w-3.5 h-3.5 text-amber-400" />
@@ -263,7 +297,7 @@ export function PosHeader({
           {/* CRM Customers Link */}
           <Link
             href="/customers"
-            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className={getNavLinkClass('/customers')}
             title="CRM Pelanggan & Loyalitas"
           >
             <Users className="w-3.5 h-3.5 text-purple-400" />
@@ -274,7 +308,7 @@ export function PosHeader({
           {!isCashier && (
             <Link
               href="/accounting"
-              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              className={getNavLinkClass('/accounting')}
               title="Laporan Keuangan & Akuntansi (Khusus Owner)"
             >
               <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
@@ -286,7 +320,7 @@ export function PosHeader({
           {!isCashier && (
             <Link
               href="/analytics"
-              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              className={getNavLinkClass('/analytics')}
               title="Analitik Bisnis & Dashboard Owner (Khusus Owner)"
             >
               <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
@@ -298,7 +332,7 @@ export function PosHeader({
           {isOwner && (
             <Link
               href="/subaccounts"
-              className="flex items-center gap-1.5 text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 px-2.5 py-1.5 rounded-lg border border-amber-500/30 transition-colors"
+              className={getNavLinkClass('/subaccounts')}
               title="Kelola & Buat Sub-Akun Kasir Cabang (Khusus Owner)"
             >
               <Users className="w-3.5 h-3.5 text-amber-400" />
@@ -310,7 +344,7 @@ export function PosHeader({
           {canAccessSettings && (
             <Link
               href="/settings"
-              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              className={getNavLinkClass('/settings')}
               title="Pengaturan Bisnis & Sistem (Khusus Owner / Admin)"
             >
               <Settings className="w-3.5 h-3.5 text-amber-400" />

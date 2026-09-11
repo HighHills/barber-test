@@ -8,7 +8,7 @@ import { SettingsShell } from '../../components/settings/settings-shell';
 export default function SettingsPage(): React.JSX.Element {
   return (
     <PosProvider>
-      <RoleGuard allowedRoles={['OWNER', 'ADMIN']} pageTitle="Pusat Pengaturan Bisnis">
+      <RoleGuard allowedRoles={['OWNER', 'ADMIN']} pageTitle="Settings">
         <SettingsShell />
       </RoleGuard>
     </PosProvider>

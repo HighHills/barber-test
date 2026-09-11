@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { usePos } from '../../context/pos-context';
 import type { SettingsSectionId } from '../../types/settings';
+import { PosHeader } from '../pos/pos-header';
 import { BusinessSettingsPanel } from './business-settings-panel';
 import { OutletSettingsPanel } from './outlet-settings-panel';
 import { StaffSettingsPanel } from './staff-settings-panel';
@@ -24,7 +23,6 @@ import {
   Calendar,
   KeyRound,
   ShieldCheck,
-  ArrowLeft,
   Settings,
   CheckCircle2,
   AlertCircle,
@@ -85,8 +83,6 @@ const sidebarGroups: SidebarGroup[] = [
 ];
 
 export function SettingsShell(): React.JSX.Element {
-  const { currentOutlet } = usePos();
-
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('business');
   const [isSectionDirty, setIsSectionDirty] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -106,7 +102,10 @@ export function SettingsShell(): React.JSX.Element {
   }, [notification]);
 
   const handleSelectSection = (newSection: SettingsSectionId) => {
-    if (newSection === activeSection) return;
+    if (newSection === activeSection) {
+      setMobileMenuOpen(false);
+      return;
+    }
 
     if (isSectionDirty) {
       const confirmLeave = window.confirm(
@@ -122,57 +121,39 @@ export function SettingsShell(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Header Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3.5 sticky top-0 z-30 shadow-md">
+      {/* 1. Unified Application Header (matching POS & OS shell) */}
+      <PosHeader />
+
+      {/* 2. Operational Context Sub-Header */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/80 transition"
-              title="Kembali ke Layar POS Kasir"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline font-medium">Layar POS</span>
-            </Link>
-
-            <div className="h-5 w-px bg-slate-800 mx-1 hidden sm:block" />
-
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <Settings className="w-4 h-4" />
-              </div>
-              <div>
-                <h1 className="text-sm sm:text-base font-bold text-white leading-tight">
-                  Pusat Pengaturan Bisnis
-                </h1>
-                <p className="text-[11px] text-amber-400 font-medium">
-                  Portal Konfigurasi Owner & Administrator
-                </p>
-              </div>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Settings className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                Settings
+              </h1>
+              <p className="text-xs text-slate-400">
+                Kelola konfigurasi bisnis dan sistem operasional.
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {currentOutlet && (
-              <div className="hidden sm:flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 rounded-lg text-xs">
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-slate-300 font-medium">{currentOutlet.name}</span>
-                <span className="text-[10px] font-mono text-amber-400/80 bg-slate-900 px-1.5 py-0.5 rounded">
-                  {currentOutlet.code}
-                </span>
-              </div>
-            )}
-
-            {/* Mobile menu toggle */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-          </div>
+          {/* Mobile Category Navigation Button */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition"
+            aria-expanded={mobileMenuOpen}
+            aria-label="Toggle menu navigasi pengaturan"
+          >
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            <span>Kategori</span>
+          </button>
         </div>
-      </header>
+      </section>
 
       {/* Global Notification Banner */}
       {notification && (
@@ -194,7 +175,8 @@ export function SettingsShell(): React.JSX.Element {
             </div>
             <button
               onClick={() => setNotification(null)}
-              className="p-1 hover:bg-white/10 rounded transition"
+              className="p-1 hover:bg-white/10 rounded transition text-slate-400 hover:text-white"
+              aria-label="Tutup notifikasi"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -204,19 +186,19 @@ export function SettingsShell(): React.JSX.Element {
 
       {/* Main Layout Container */}
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col md:flex-row gap-6 p-4 sm:p-6">
-        {/* Left Sidebar (Desktop & Mobile Drawer) */}
+        {/* Left Sidebar (Desktop & Mobile Reflow) */}
         <aside
           className={`${
             mobileMenuOpen ? 'block' : 'hidden'
-          } md:block w-full md:w-64 shrink-0 space-y-6 bg-slate-900/80 md:bg-transparent p-4 md:p-0 rounded-2xl md:rounded-none border md:border-0 border-slate-800`}
+          } md:block w-full md:w-60 shrink-0 space-y-5 bg-slate-900/90 md:bg-transparent p-4 md:p-0 rounded-2xl md:rounded-none border md:border-0 border-slate-800`}
         >
           {sidebarGroups.map((group) => (
-            <div key={group.groupName} className="space-y-1.5">
-              <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase px-3">
+            <div key={group.groupName} className="space-y-1">
+              <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase px-3 py-1">
                 {group.groupName}
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeSection === item.id;
@@ -243,14 +225,21 @@ export function SettingsShell(): React.JSX.Element {
                       key={item.id}
                       type="button"
                       onClick={() => handleSelectSection(item.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition text-left ${
+                      className={`w-full group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition text-left relative focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-400 ${
                         isActive
-                          ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                          ? 'bg-slate-800 text-amber-300 font-semibold border border-slate-700/80 shadow-xs'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800/60 border border-transparent'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />
-                      <span>{item.label}</span>
+                      {isActive && (
+                        <span className="absolute left-0 top-2 bottom-2 w-1 bg-amber-400 rounded-r" />
+                      )}
+                      <Icon
+                        className={`w-4 h-4 shrink-0 transition-colors ${
+                          isActive ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                        }`}
+                      />
+                      <span className="truncate">{item.label}</span>
                     </button>
                   );
                 })}
