@@ -12,6 +12,36 @@ import {
   Edit2,
 } from 'lucide-react';
 
+interface EmployeeLeaveOutletRelation {
+  code: string | null;
+  name: string | null;
+}
+
+interface EmployeeLeaveAssignmentRow {
+  outlet_id: string;
+  is_primary: boolean | null;
+  is_active: boolean | null;
+  outlets:
+    | EmployeeLeaveOutletRelation
+    | EmployeeLeaveOutletRelation[]
+    | null;
+}
+
+interface EmployeeLeaveEmployeeRow {
+  id: string;
+  employee_code: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  position: string;
+  hire_date: string;
+  termination_date: string | null;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  employee_outlets: EmployeeLeaveAssignmentRow[] | null;
+}
+
 interface EmployeeLeavePanelProps {
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
 }
@@ -38,12 +68,66 @@ export function EmployeeLeavePanel({
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Query employees
-      const { data: empData } = await supabase
+      // Query employees with assignments
+      const { data: empData, error: empErr } = await supabase
         .from('employees')
-        .select('id, employee_code, full_name, position, is_active')
+        .select(`
+          id,
+          employee_code,
+          full_name,
+          phone,
+          email,
+          position,
+          hire_date,
+          termination_date,
+          is_active,
+          created_at,
+          updated_at,
+          employee_outlets (
+            outlet_id,
+            is_primary,
+            is_active,
+            outlets (
+              code,
+              name
+            )
+          )
+        `)
         .order('full_name');
-      setEmployees((empData || []) as EmployeeItem[]);
+
+      if (empErr) throw empErr;
+
+      const rawEmpRows = (empData || []) as EmployeeLeaveEmployeeRow[];
+      const mappedEmployees: EmployeeItem[] = rawEmpRows.map((e: EmployeeLeaveEmployeeRow) => {
+        const rawAssignments = e.employee_outlets || [];
+        const assigned = rawAssignments.map((ao: EmployeeLeaveAssignmentRow) => {
+          const outObj = Array.isArray(ao.outlets) ? ao.outlets[0] : ao.outlets;
+          return {
+            outlet_id: ao.outlet_id,
+            outlet_code: outObj?.code || 'OUT',
+            outlet_name: outObj?.name || 'Cabang',
+            is_primary: Boolean(ao.is_primary),
+            is_active: Boolean(ao.is_active),
+          };
+        });
+
+        return {
+          id: e.id,
+          employee_code: e.employee_code,
+          full_name: e.full_name,
+          phone: e.phone,
+          email: e.email,
+          position: e.position,
+          hire_date: e.hire_date,
+          termination_date: e.termination_date,
+          is_active: e.is_active,
+          created_at: e.created_at || undefined,
+          updated_at: e.updated_at || undefined,
+          assigned_outlets: assigned,
+        };
+      });
+
+      setEmployees(mappedEmployees);
 
       // Query outlets
       const { data: outData } = await supabase

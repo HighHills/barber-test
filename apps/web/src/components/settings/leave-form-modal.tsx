@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { EmployeeItem, LeaveItem, LeaveStatus, OutletItem } from '../../types/settings';
 import { X, Calendar, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -17,7 +17,7 @@ interface LeaveFormModalProps {
     status: LeaveStatus;
   }) => Promise<void>;
   employees: EmployeeItem[];
-  outlets: OutletItem[];
+  outlets?: OutletItem[];
   editingLeave?: LeaveItem | null;
 }
 
@@ -28,7 +28,6 @@ export function LeaveFormModal({
   onClose,
   onSave,
   employees,
-  outlets,
   editingLeave,
 }: LeaveFormModalProps): React.JSX.Element | null {
   const [employeeId, setEmployeeId] = useState<string>('');
@@ -41,17 +40,61 @@ export function LeaveFormModal({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Derived selected employee
+  const selectedEmployee = useMemo(() => {
+    return employees.find((e) => e.id === employeeId) || null;
+  }, [employees, employeeId]);
+
+  // Derived active assigned outlets for selected employee
+  const activeAssignedOutlets = useMemo(() => {
+    return (selectedEmployee?.assigned_outlets || []).filter((ao) => ao.is_active);
+  }, [selectedEmployee]);
+
+  // Check if current outletId is valid active assignment for selectedEmployee
+  const isOutletAssignmentActive = useMemo(() => {
+    if (!outletId) return false;
+    return activeAssignedOutlets.some((ao) => ao.outlet_id === outletId);
+  }, [activeAssignedOutlets, outletId]);
+
+  // In edit mode, check if the leave's existing outlet assignment is inactive
+  const isHistoricalAssignmentInactive = useMemo(() => {
+    if (!editingLeave) return false;
+    if (editingLeave.employee_id !== employeeId) return false;
+    return editingLeave.outlet_id === outletId && !isOutletAssignmentActive;
+  }, [editingLeave, employeeId, outletId, isOutletAssignmentActive]);
+
   useEffect(() => {
+    if (!isOpen) return;
+
     if (editingLeave) {
       setEmployeeId(editingLeave.employee_id);
+      // In edit mode: keep existing outlet without silently switching
       setOutletId(editingLeave.outlet_id);
       setStartAt(editingLeave.start_at ? editingLeave.start_at.slice(0, 16) : '');
       setEndAt(editingLeave.end_at ? editingLeave.end_at.slice(0, 16) : '');
       setReason(editingLeave.reason || '');
       setStatus(editingLeave.status);
     } else {
-      setEmployeeId(employees[0]?.id || '');
-      setOutletId(outlets[0]?.id || '');
+      // In create mode: pick first employee who has active assignments if available, or employees[0]
+      const initialEmp =
+        employees.find((e) => (e.assigned_outlets || []).some((ao) => ao.is_active)) ||
+        employees[0];
+
+      const initialEmpId = initialEmp?.id || '';
+      setEmployeeId(initialEmpId);
+
+      const activeAssignments = (initialEmp?.assigned_outlets || []).filter(
+        (ao) => ao.is_active
+      );
+      const primary = activeAssignments.find((ao) => ao.is_primary);
+
+      if (primary) {
+        setOutletId(primary.outlet_id);
+      } else if (activeAssignments.length > 0) {
+        setOutletId(activeAssignments[0].outlet_id);
+      } else {
+        setOutletId('');
+      }
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -71,9 +114,26 @@ export function LeaveFormModal({
       setStatus('APPROVED');
     }
     setErrorMessage(null);
-  }, [editingLeave, isOpen, employees, outlets]);
+  }, [editingLeave, isOpen, employees]);
 
   if (!isOpen) return null;
+
+  const handleEmployeeChange = (newEmpId: string) => {
+    setEmployeeId(newEmpId);
+    setErrorMessage(null);
+
+    const emp = employees.find((e) => e.id === newEmpId);
+    const activeAssignments = (emp?.assigned_outlets || []).filter((ao) => ao.is_active);
+    const primary = activeAssignments.find((ao) => ao.is_primary);
+
+    if (primary) {
+      setOutletId(primary.outlet_id);
+    } else if (activeAssignments.length > 0) {
+      setOutletId(activeAssignments[0].outlet_id);
+    } else {
+      setOutletId('');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +143,14 @@ export function LeaveFormModal({
     }
     if (!outletId) {
       setErrorMessage('Pilih cabang outlet penugasan.');
+      return;
+    }
+    if (!isOutletAssignmentActive) {
+      setErrorMessage(
+        isHistoricalAssignmentInactive
+          ? 'Penugasan cabang karyawan untuk data cuti ini sudah tidak aktif.'
+          : 'Karyawan belum memiliki penugasan cabang aktif pada outlet yang dipilih.'
+      );
       return;
     }
     if (!startAt || !endAt) {
@@ -157,6 +225,27 @@ export function LeaveFormModal({
             </div>
           )}
 
+          {isHistoricalAssignmentInactive && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-200">
+                  Penugasan cabang karyawan untuk data cuti ini sudah tidak aktif.
+                </p>
+                <p className="text-amber-300/80 mt-0.5">
+                  Data riwayat cuti ini tetap mempertahankan cabang asalnya ({editingLeave?.outlet_name || 'Cabang Terkait'}), namun tidak dapat diperbarui sebelum penugasan cabang diaktifkan kembali.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {selectedEmployee && activeAssignedOutlets.length === 0 && !isHistoricalAssignmentInactive && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>Karyawan ini belum memiliki penugasan cabang aktif.</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-300 font-semibold mb-1">
@@ -164,7 +253,7 @@ export function LeaveFormModal({
               </label>
               <select
                 value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
+                onChange={(e) => handleEmployeeChange(e.target.value)}
                 required
                 className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white focus:outline-none"
               >
@@ -183,14 +272,28 @@ export function LeaveFormModal({
               <select
                 value={outletId}
                 onChange={(e) => setOutletId(e.target.value)}
+                disabled={activeAssignedOutlets.length === 0 || isHistoricalAssignmentInactive}
                 required
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {outlets.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} ({o.code})
-                  </option>
-                ))}
+                {activeAssignedOutlets.length === 0 && !isHistoricalAssignmentInactive ? (
+                  <option value="">Tidak ada cabang penugasan aktif</option>
+                ) : (
+                  <>
+                    {/* Render historical option when assignment is inactive to preserve value visually without silent change */}
+                    {isHistoricalAssignmentInactive && (
+                      <option value={editingLeave?.outlet_id}>
+                        {editingLeave?.outlet_name || 'Cabang'} (Penugasan Tidak Aktif)
+                      </option>
+                    )}
+                    {activeAssignedOutlets.map((assignment) => (
+                      <option key={assignment.outlet_id} value={assignment.outlet_id}>
+                        {assignment.outlet_name} ({assignment.outlet_code})
+                        {assignment.is_primary ? ' — Cabang Utama' : ''}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -272,7 +375,13 @@ export function LeaveFormModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting ||
+                !employeeId ||
+                !outletId ||
+                !isOutletAssignmentActive ||
+                activeAssignedOutlets.length === 0
+              }
               className="flex items-center gap-1.5 px-5 py-2 font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl transition shadow-md shadow-amber-500/20 disabled:opacity-50"
             >
               {isSubmitting ? (
@@ -293,3 +402,4 @@ export function LeaveFormModal({
     </div>
   );
 }
+
