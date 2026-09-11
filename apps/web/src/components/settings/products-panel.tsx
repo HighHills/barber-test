@@ -521,7 +521,7 @@ export function ProductsPanel({ onNotification }: ProductsPanelProps): React.JSX
         </div>
       )}
 
-      {/* Product Form Modal (save_product + save_product_outlet) */}
+      {/* Product Form Modal (save_product_catalog_with_outlets) */}
       <ProductFormModal
         isOpen={isFormModalOpen}
         onClose={() => {

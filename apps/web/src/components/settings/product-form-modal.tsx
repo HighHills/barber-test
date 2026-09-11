@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { ProductItem, ProductCategoryItem, OutletItem } from '../../types/settings';
+import type {
+  ProductItem,
+  ProductCategoryItem,
+  OutletItem,
+  CatalogOutletPayload,
+} from '../../types/settings';
 import {
   X,
   Package,
@@ -62,6 +67,8 @@ export function ProductFormModal({
 
   // Initialize form state
   useEffect(() => {
+    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
+
     if (product) {
       setSku(product.sku || '');
       setBarcode(product.barcode || '');
@@ -74,7 +81,7 @@ export function ProductFormModal({
 
       // Map existing outlet prices
       const priceMap: Record<string, OutletPriceState> = {};
-      outlets.forEach((o) => {
+      activeSystemOutlets.forEach((o) => {
         const assigned = product.product_outlets?.find((po) => po.outlet_id === o.id);
         priceMap[o.id] = {
           outlet_id: o.id,
@@ -94,7 +101,7 @@ export function ProductFormModal({
       setIsActive(true);
 
       const priceMap: Record<string, OutletPriceState> = {};
-      outlets.forEach((o) => {
+      activeSystemOutlets.forEach((o) => {
         priceMap[o.id] = {
           outlet_id: o.id,
           selling_price: '75000',
@@ -160,55 +167,66 @@ export function ProductFormModal({
       return;
     }
 
+    // Filter to active system outlets where the outlet is marked active in the modal
+    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
+    const selectedOutlets = activeSystemOutlets.filter((o) => outletPrices[o.id]?.is_active);
+
+    if (selectedOutlets.length === 0) {
+      setFormError('Pilih dan aktifkan minimal satu cabang outlet untuk produk ini.');
+      return;
+    }
+
     // Validate outlet prices
-    for (const o of outlets) {
+    for (const o of selectedOutlets) {
       const pState = outletPrices[o.id];
       const pNum = parseFloat(pState?.selling_price || '0');
       if (isNaN(pNum) || pNum < 0) {
-        setFormError(`Harga jual pada cabang "${o.name}" tidak valid.`);
+        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal 0).`);
         return;
       }
+    }
+
+    const outletsPayload: CatalogOutletPayload[] = selectedOutlets.map((o) => {
+      const pState = outletPrices[o.id];
+      return {
+        outlet_id: o.id,
+        selling_price: parseFloat(pState?.selling_price || '0') || 0,
+        is_active: true,
+      };
+    });
+
+    // Validate no duplicate outlet_id
+    const outletIdSet = new Set<string>();
+    for (const item of outletsPayload) {
+      if (outletIdSet.has(item.outlet_id)) {
+        setFormError('Konfigurasi outlet produk tidak boleh duplikat.');
+        return;
+      }
+      outletIdSet.add(item.outlet_id);
     }
 
     setIsSubmitting(true);
     try {
       const p_product_id = product ? product.id : null;
 
-      // 1. Call save_product RPC
-      const { data: savedProductId, error: prdErr } = await supabase.rpc('save_product', {
-        p_product_id,
-        p_category_id: categoryId,
-        p_sku: trimmedSku,
-        p_barcode: barcode.trim() || null,
-        p_name: trimmedName,
-        p_description: description.trim() || null,
-        p_base_unit: trimmedUnit,
-        p_default_cost_price: costNum,
-        p_is_active: isActive,
-      });
-
-      if (prdErr) throw prdErr;
-
-      // Resolve target product id
-      const targetProductId = (savedProductId as string) || product?.id;
-
-      // 2. Save each outlet's price via save_product_outlet RPC
-      if (targetProductId) {
-        for (const o of outlets) {
-          const pState = outletPrices[o.id];
-          const sPrice = parseFloat(pState?.selling_price || '0') || 0;
-          const sActive = pState?.is_active ?? true;
-
-          const { error: poErr } = await supabase.rpc('save_product_outlet', {
-            p_product_id: targetProductId,
-            p_outlet_id: o.id,
-            p_selling_price: sPrice,
-            p_is_active: sActive,
-          });
-
-          if (poErr) throw poErr;
+      // Single atomic RPC: save_product_catalog_with_outlets
+      const { error: rpcErr } = await supabase.rpc(
+        'save_product_catalog_with_outlets',
+        {
+          p_product_id,
+          p_category_id: categoryId,
+          p_sku: trimmedSku,
+          p_barcode: barcode.trim() || null,
+          p_name: trimmedName,
+          p_description: description.trim() || null,
+          p_base_unit: trimmedUnit,
+          p_default_cost_price: costNum,
+          p_is_active: isActive,
+          p_outlets: outletsPayload,
         }
-      }
+      );
+
+      if (rpcErr) throw rpcErr;
 
       onNotification?.({
         type: 'SUCCESS',
@@ -221,7 +239,7 @@ export function ProductFormModal({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      console.error('save_product error:', err);
+      console.error('save_product_catalog_with_outlets error:', err);
       const msg = err instanceof Error ? err.message : 'Gagal menyimpan produk.';
       setFormError(msg);
     } finally {
@@ -421,7 +439,7 @@ export function ProductFormModal({
             </div>
 
             <div className="space-y-2">
-              {outlets.map((o) => {
+              {outlets.filter((o) => o.is_active !== false).map((o) => {
                 const pState = outletPrices[o.id] || {
                   outlet_id: o.id,
                   selling_price: '75000',

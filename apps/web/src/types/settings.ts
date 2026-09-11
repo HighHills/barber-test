@@ -175,6 +175,12 @@ export interface ServiceOutletItem {
   outlet_code?: string;
 }
 
+export interface CatalogOutletPayload {
+  outlet_id: string;
+  selling_price: number;
+  is_active: boolean;
+}
+
 export interface ServiceConsumptionItem {
   id: string;
   service_id: string;

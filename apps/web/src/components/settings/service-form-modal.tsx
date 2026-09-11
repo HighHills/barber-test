@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { ServiceItem, ServiceCategoryItem, OutletItem } from '../../types/settings';
+import type {
+  ServiceItem,
+  ServiceCategoryItem,
+  OutletItem,
+  CatalogOutletPayload,
+} from '../../types/settings';
 import {
   X,
   Scissors,
@@ -59,6 +64,8 @@ export function ServiceFormModal({
 
   // Initialize form state
   useEffect(() => {
+    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
+
     if (service) {
       setCode(service.code || '');
       setName(service.name || '');
@@ -70,7 +77,7 @@ export function ServiceFormModal({
 
       // Map existing outlet prices
       const priceMap: Record<string, OutletPriceState> = {};
-      outlets.forEach((o) => {
+      activeSystemOutlets.forEach((o) => {
         const assigned = service.service_outlets?.find((so) => so.outlet_id === o.id);
         priceMap[o.id] = {
           outlet_id: o.id,
@@ -90,7 +97,7 @@ export function ServiceFormModal({
 
       // Default price for each outlet
       const priceMap: Record<string, OutletPriceState> = {};
-      outlets.forEach((o) => {
+      activeSystemOutlets.forEach((o) => {
         priceMap[o.id] = {
           outlet_id: o.id,
           selling_price: '50000',
@@ -155,54 +162,65 @@ export function ServiceFormModal({
       return;
     }
 
+    // Filter to active system outlets where the outlet is marked active in the modal
+    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
+    const selectedOutlets = activeSystemOutlets.filter((o) => outletPrices[o.id]?.is_active);
+
+    if (selectedOutlets.length === 0) {
+      setFormError('Pilih dan aktifkan minimal satu cabang outlet untuk layanan ini.');
+      return;
+    }
+
     // Validate outlet prices
-    for (const o of outlets) {
+    for (const o of selectedOutlets) {
       const pState = outletPrices[o.id];
       const pNum = parseFloat(pState?.selling_price || '0');
       if (isNaN(pNum) || pNum < 0) {
-        setFormError(`Harga jual pada cabang "${o.name}" tidak valid.`);
+        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal 0).`);
         return;
       }
+    }
+
+    const outletsPayload: CatalogOutletPayload[] = selectedOutlets.map((o) => {
+      const pState = outletPrices[o.id];
+      return {
+        outlet_id: o.id,
+        selling_price: parseFloat(pState?.selling_price || '0') || 0,
+        is_active: true,
+      };
+    });
+
+    // Validate no duplicate outlet_id
+    const outletIdSet = new Set<string>();
+    for (const item of outletsPayload) {
+      if (outletIdSet.has(item.outlet_id)) {
+        setFormError('Konfigurasi outlet layanan tidak boleh duplikat.');
+        return;
+      }
+      outletIdSet.add(item.outlet_id);
     }
 
     setIsSubmitting(true);
     try {
       const p_service_id = service ? service.id : null;
 
-      // 1. Call save_service RPC
-      const { data: savedServiceId, error: srvErr } = await supabase.rpc('save_service', {
-        p_service_id,
-        p_category_id: categoryId,
-        p_code: trimmedCode,
-        p_name: trimmedName,
-        p_description: description.trim() || null,
-        p_duration_minutes: durationMinutes,
-        p_default_cost_price: costNum,
-        p_is_active: isActive,
-      });
-
-      if (srvErr) throw srvErr;
-
-      // Resolve target service id
-      const targetServiceId = (savedServiceId as string) || service?.id;
-
-      // 2. Save each outlet's price via save_service_outlet RPC
-      if (targetServiceId) {
-        for (const o of outlets) {
-          const pState = outletPrices[o.id];
-          const sPrice = parseFloat(pState?.selling_price || '0') || 0;
-          const sActive = pState?.is_active ?? true;
-
-          const { error: soErr } = await supabase.rpc('save_service_outlet', {
-            p_service_id: targetServiceId,
-            p_outlet_id: o.id,
-            p_selling_price: sPrice,
-            p_is_active: sActive,
-          });
-
-          if (soErr) throw soErr;
+      // Single atomic RPC: save_service_catalog_with_outlets
+      const { error: rpcErr } = await supabase.rpc(
+        'save_service_catalog_with_outlets',
+        {
+          p_service_id,
+          p_category_id: categoryId,
+          p_code: trimmedCode,
+          p_name: trimmedName,
+          p_description: description.trim() || null,
+          p_duration_minutes: durationMinutes,
+          p_default_cost_price: costNum,
+          p_is_active: isActive,
+          p_outlets: outletsPayload,
         }
-      }
+      );
+
+      if (rpcErr) throw rpcErr;
 
       onNotification?.({
         type: 'SUCCESS',
@@ -215,7 +233,7 @@ export function ServiceFormModal({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      console.error('save_service error:', err);
+      console.error('save_service_catalog_with_outlets error:', err);
       const msg = err instanceof Error ? err.message : 'Gagal menyimpan layanan.';
       setFormError(msg);
     } finally {
@@ -395,7 +413,7 @@ export function ServiceFormModal({
             </div>
 
             <div className="space-y-2">
-              {outlets.map((o) => {
+              {outlets.filter((o) => o.is_active !== false).map((o) => {
                 const pState = outletPrices[o.id] || {
                   outlet_id: o.id,
                   selling_price: '50000',
