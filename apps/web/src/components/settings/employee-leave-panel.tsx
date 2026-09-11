@@ -89,7 +89,7 @@ export function EmployeeLeavePanel({
           outlet_name: out?.name || 'Cabang',
           start_at: l.start_at,
           end_at: l.end_at,
-          reason: l.reason,
+          reason: l.reason || null,
           status: l.status as LeaveStatus,
           created_at: l.created_at,
         };
@@ -115,10 +115,11 @@ export function EmployeeLeavePanel({
   const filteredLeaves = useMemo(() => {
     return leaves.filter((l) => {
       const q = searchQuery.toLowerCase();
+      const reason = l.reason || '';
       const matchSearch =
         (l.employee_name && l.employee_name.toLowerCase().includes(q)) ||
         (l.employee_code && l.employee_code.toLowerCase().includes(q)) ||
-        l.reason.toLowerCase().includes(q);
+        reason.toLowerCase().includes(q);
 
       const matchStatus = statusFilter === 'ALL' || l.status === statusFilter;
       const matchOutlet = outletFilter === 'ALL' || l.outlet_id === outletFilter;
@@ -134,7 +135,7 @@ export function EmployeeLeavePanel({
     outlet_id: string;
     start_at: string;
     end_at: string;
-    reason: string;
+    reason: string | null;
     status: LeaveStatus;
   }) => {
     const { error } = await supabase.rpc('save_employee_leave', {
@@ -143,7 +144,7 @@ export function EmployeeLeavePanel({
       p_outlet_id: data.outlet_id,
       p_start_at: data.start_at,
       p_end_at: data.end_at,
-      p_reason: data.reason,
+      p_reason: data.reason ? data.reason.trim() || null : null,
       p_status: data.status,
     });
 
@@ -167,7 +168,7 @@ export function EmployeeLeavePanel({
         p_outlet_id: leave.outlet_id,
         p_start_at: leave.start_at,
         p_end_at: leave.end_at,
-        p_reason: leave.reason,
+        p_reason: leave.reason || null,
         p_status: newStatus,
       });
 
@@ -329,9 +330,13 @@ export function EmployeeLeavePanel({
                       </td>
 
                       <td className="p-4 max-w-xs">
-                        <p className="line-clamp-2 text-slate-300 italic text-[11px]">
-                          &ldquo;{leave.reason}&rdquo;
-                        </p>
+                        {leave.reason ? (
+                          <p className="line-clamp-2 text-slate-300 italic text-[11px]">
+                            &ldquo;{leave.reason}&rdquo;
+                          </p>
+                        ) : (
+                          <span className="text-slate-500 italic text-[11px]">- Tanpa keterangan -</span>
+                        )}
                       </td>
 
                       <td className="p-4 text-center">

@@ -13,7 +13,7 @@ interface LeaveFormModalProps {
     outlet_id: string;
     start_at: string;
     end_at: string;
-    reason: string;
+    reason: string | null;
     status: LeaveStatus;
   }) => Promise<void>;
   employees: EmployeeItem[];

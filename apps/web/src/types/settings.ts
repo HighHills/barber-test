@@ -92,10 +92,22 @@ export interface LeaveItem {
   outlet_name?: string;
   start_at: string;
   end_at: string;
-  reason: string;
+  reason: string | null;
   status: LeaveStatus;
   created_by?: string | null;
   created_at?: string;
+}
+
+export interface CashierSubaccountListItem {
+  id: string;
+  display_name: string;
+  phone: string | null;
+  email: string | null;
+  outlet_id: string;
+  outlet_name: string;
+  outlet_code: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface SettingsUserItem {
