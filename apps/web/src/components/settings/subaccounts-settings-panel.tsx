@@ -185,10 +185,10 @@ export function SubaccountsSettingsPanel({
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition text-xs font-bold shadow-md shadow-amber-500/20"
-            title="Tambah Sub-Akun Pengguna Baru"
+            title="Tambah Sub-Akun Kasir Baru"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Tambah Sub-Akun</span>
+            <span>Tambah Kasir</span>
           </button>
 
           <button
@@ -496,7 +496,6 @@ export function SubaccountsSettingsPanel({
       <CreateSubaccountModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        roles={roles}
         outlets={outlets}
         onSuccess={() => loadData(true)}
         onNotification={onNotification}

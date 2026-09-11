@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
-import type { RoleItem, OutletItem } from '../../types/settings';
+import type { OutletItem } from '../../types/settings';
 import {
   X,
   UserPlus,
@@ -12,17 +12,15 @@ import {
   Lock,
   Phone,
   Store,
-  Shield,
+  ShieldCheck,
   Eye,
   EyeOff,
-  Globe,
   Info,
 } from 'lucide-react';
 
 interface CreateSubaccountModalProps {
   isOpen: boolean;
   onClose: () => void;
-  roles: RoleItem[];
   outlets: OutletItem[];
   onSuccess: () => void;
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
@@ -31,7 +29,6 @@ interface CreateSubaccountModalProps {
 export function CreateSubaccountModal({
   isOpen,
   onClose,
-  roles,
   outlets,
   onSuccess,
   onNotification,
@@ -43,13 +40,12 @@ export function CreateSubaccountModal({
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [phone, setPhone] = useState<string>('');
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [selectedOutletId, setSelectedOutletId] = useState<string>('');
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Initialize defaults on open
+  // Initialize form defaults when opened
   useEffect(() => {
     if (isOpen) {
       setDisplayName('');
@@ -59,111 +55,75 @@ export function CreateSubaccountModal({
       setPhone('');
       setFormError(null);
 
-      // Default role to CASHIER if available, otherwise first role
-      const cashierRole = roles.find((r) => r.code === 'CASHIER');
-      setSelectedRoleId(cashierRole ? cashierRole.id : roles[0]?.id || '');
-
-      // Default outlet to first available outlet
-      setSelectedOutletId(outlets[0]?.id || '');
+      // Default outlet to first available active outlet
+      const firstActiveOutlet = outlets.find((o) => o.is_active) || outlets[0];
+      setSelectedOutletId(firstActiveOutlet?.id || '');
     }
-  }, [isOpen, roles, outlets]);
-
-  const selectedRole = useMemo(() => {
-    return roles.find((r) => r.id === selectedRoleId);
-  }, [roles, selectedRoleId]);
+  }, [isOpen, outlets]);
 
   if (!isOpen) return null;
-
-  const roleCode = selectedRole?.code?.toUpperCase() || '';
-  const isOwnerOrAdmin = roleCode === 'OWNER' || roleCode === 'ADMIN';
-  const isOutletMandatory = ['MANAGER', 'CASHIER', 'BARBER', 'INVENTORY'].includes(roleCode);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    // Validation
+    // Synchronize validations with backend create_cashier_subaccount RPC constraints
     const trimmedName = displayName.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
 
     if (!trimmedName || trimmedName.length < 2) {
-      setFormError('Nama lengkap pengguna wajib diisi (minimal 2 karakter).');
+      setFormError('Nama kasir wajib diisi (minimal 2 karakter).');
       return;
     }
 
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setFormError('Format alamat email login tidak valid.');
+    if (!trimmedEmail || trimmedEmail.length < 5 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setFormError('Format email kasir tidak valid.');
       return;
     }
 
     if (!password || password.length < 6) {
-      setFormError('Password login akun minimal 6 karakter.');
+      setFormError('Password akun kasir minimal 6 karakter.');
       return;
     }
 
-    if (!selectedRoleId) {
-      setFormError('Harap tentukan peran (role) untuk akun baru.');
+    if (!selectedOutletId) {
+      setFormError('Outlet penugasan kasir wajib ditentukan.');
       return;
     }
 
-    if (isOutletMandatory && !selectedOutletId) {
-      setFormError(`Role ${roleCode} wajib ditugaskan pada salah satu cabang/outlet operasional.`);
+    // Verify selected outlet is active
+    const outletObj = outlets.find((o) => o.id === selectedOutletId);
+    if (!outletObj || !outletObj.is_active) {
+      setFormError('Outlet tujuan tidak ditemukan atau tidak aktif.');
       return;
     }
-
-    if (outlets.length === 0) {
-      setFormError('Belum ada cabang outlet yang terdaftar di sistem.');
-      return;
-    }
-
-    // create_cashier_subaccount requires a valid outlet UUID
-    const outletForCreate = selectedOutletId || outlets[0].id;
 
     setIsSubmitting(true);
     try {
-      // 1. Invoke create_cashier_subaccount RPC
-      const { data: createData, error: createErr } = await supabase.rpc(
-        'create_cashier_subaccount',
-        {
-          p_email: trimmedEmail,
-          p_password: password,
-          p_display_name: trimmedName,
-          p_phone: trimmedPhone || null,
-          p_outlet_id: outletForCreate,
-        }
-      );
+      // Atomic RPC create_cashier_subaccount only. No subsequent role assignment calls.
+      const { error: rpcErr } = await supabase.rpc('create_cashier_subaccount', {
+        p_email: trimmedEmail,
+        p_password: password,
+        p_display_name: trimmedName,
+        p_phone: trimmedPhone || null,
+        p_outlet_id: selectedOutletId,
+      });
 
-      if (createErr) {
-        throw new Error(createErr.message);
-      }
-
-      const profileId = (createData as { profile_id?: string })?.profile_id;
-
-      // 2. If the user selected a role other than CASHIER, or if role is OWNER/ADMIN (global access)
-      if (profileId && (roleCode !== 'CASHIER' || isOwnerOrAdmin)) {
-        const targetOutletId = isOwnerOrAdmin ? null : (selectedOutletId || null);
-        const { error: roleErr } = await supabase.rpc('save_user_role', {
-          p_profile_id: profileId,
-          p_role_id: selectedRoleId,
-          p_outlet_id: targetOutletId,
-        });
-
-        if (roleErr) {
-          console.warn('Warning updating custom role post-creation:', roleErr);
-        }
+      if (rpcErr) {
+        throw new Error(rpcErr.message);
       }
 
       onNotification?.({
         type: 'SUCCESS',
-        message: `Sub-akun "${trimmedName}" berhasil didaftarkan sebagai ${selectedRole?.name || 'Kasir'}!`,
+        message: `Sub-akun kasir "${trimmedName}" berhasil didaftarkan untuk cabang ${outletObj.name}!`,
       });
 
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      console.error('Create subaccount error:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal membuat sub-akun pengguna';
+      console.error('create_cashier_subaccount error:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal membuat sub-akun kasir';
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
@@ -180,9 +140,9 @@ export function CreateSubaccountModal({
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Tambah Sub-Akun Baru</h3>
+              <h3 className="text-base font-bold text-white">Tambah Sub-Akun Kasir</h3>
               <p className="text-xs text-slate-400">
-                Daftarkan akun login staf & atur peran serta cabang penugasan
+                Daftarkan akun login kasir baru dan tugaskan ke cabang spesifik
               </p>
             </div>
           </div>
@@ -203,14 +163,31 @@ export function CreateSubaccountModal({
             </div>
           )}
 
+          {/* Role Info Banner */}
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-start gap-2.5 text-xs text-slate-300">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold text-white flex items-center gap-1.5">
+                <span>Peran Sistem:</span>
+                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-[10px] font-bold font-mono">
+                  CASHIER
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                Akun ini akan dibuat dengan hak akses Kasir POS dan otomatis terkunci hanya dapat melayani transaksi pada cabang penugasan.
+              </p>
+            </div>
+          </div>
+
           {/* Display Name */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Nama Lengkap Pengguna <span className="text-amber-400">*</span>
+              Nama Lengkap Kasir <span className="text-amber-400">*</span>
             </label>
             <input
               type="text"
               required
+              minLength={2}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="misal: Rian Pratama"
@@ -221,7 +198,7 @@ export function CreateSubaccountModal({
           {/* Email */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Email Login Akun <span className="text-amber-400">*</span>
+              Email Login Kasir <span className="text-amber-400">*</span>
             </label>
             <div className="relative">
               <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -230,19 +207,19 @@ export function CreateSubaccountModal({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="staf.cabang@barbershop.com"
+                placeholder="kasir.sudirman@barbershop.com"
                 className="w-full pl-9 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition font-mono"
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Digunakan pengguna untuk masuk ke aplikasi web dan POS.
+              Digunakan kasir untuk masuk ke terminal POS.
             </p>
           </div>
 
           {/* Password */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Password Login Akun <span className="text-amber-400">*</span>
+              Password Akun Kasir <span className="text-amber-400">*</span>
             </label>
             <div className="relative">
               <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -268,7 +245,7 @@ export function CreateSubaccountModal({
           {/* Phone / WhatsApp */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Nomor WhatsApp / Telepon (Opsional)
+              Nomor WhatsApp / HP (Opsional)
             </label>
             <div className="relative">
               <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -282,72 +259,32 @@ export function CreateSubaccountModal({
             </div>
           </div>
 
-          {/* Role Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Peran Akun (Role) <span className="text-amber-400">*</span>
-            </label>
-            <div className="relative">
-              <Shield className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <select
-                value={selectedRoleId}
-                onChange={(e) => setSelectedRoleId(e.target.value)}
-                className="w-full pl-9 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 transition"
-              >
-                {roles
-                  .filter((r) => r.is_active)
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.code}) {r.is_system ? '— Sistem' : '— Kustom'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            {selectedRole?.description && (
-              <p className="text-[11px] text-slate-400 mt-1 italic">
-                {selectedRole.description}
-              </p>
-            )}
-          </div>
-
           {/* Outlet Selection */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Cabang Outlet Penugasan{' '}
-              {isOutletMandatory ? <span className="text-amber-400">*</span> : null}
+              Cabang Outlet Penugasan <span className="text-amber-400">*</span>
             </label>
-            {isOwnerOrAdmin ? (
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-start gap-2 text-xs text-amber-400">
-                <Globe className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  Role <strong>{roleCode}</strong> memiliki otoritas global ke seluruh cabang. Penugasan otomatis berlaku untuk semua cabang.
-                </span>
-              </div>
-            ) : (
-              <div className="relative">
-                <Store className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <select
-                  value={selectedOutletId}
-                  onChange={(e) => setSelectedOutletId(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 transition"
-                >
-                  {!isOutletMandatory && (
-                    <option value="">Akses Global (Semua Cabang)</option>
-                  )}
-                  {outlets.map((o) => (
+            <div className="relative">
+              <Store className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <select
+                value={selectedOutletId}
+                onChange={(e) => setSelectedOutletId(e.target.value)}
+                required
+                className="w-full pl-9 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 transition"
+              >
+                {outlets
+                  .filter((o) => o.is_active)
+                  .map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name} ({o.code})
                     </option>
                   ))}
-                </select>
-              </div>
-            )}
-            {isOutletMandatory && (
-              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-                <Info className="w-3 h-3 text-slate-500 shrink-0" />
-                <span>Staf dengan role ini terkunci melayani transaksi pada cabang ini saja.</span>
-              </p>
-            )}
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+              <Info className="w-3 h-3 text-slate-500 shrink-0" />
+              <span>Kasir ini hanya diizinkan membuka sesi kasir dan bertransaksi di cabang ini.</span>
+            </p>
           </div>
 
           {/* Footer Buttons */}
@@ -373,7 +310,7 @@ export function CreateSubaccountModal({
               ) : (
                 <>
                   <UserPlus className="w-3.5 h-3.5" />
-                  <span>Daftarkan Sub-Akun</span>
+                  <span>Daftarkan Sub-Akun Kasir</span>
                 </>
               )}
             </button>
