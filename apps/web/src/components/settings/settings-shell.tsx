@@ -101,14 +101,15 @@ export function SettingsShell(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [notification]);
 
-  // Browser tab close / reload protection when settings are dirty
+  // Browser tab close / reload protection strictly active only when settings are dirty
   useEffect(() => {
+    if (!isSectionDirty) return;
+
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSectionDirty) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
+      e.preventDefault();
+      e.returnValue = '';
     };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isSectionDirty]);

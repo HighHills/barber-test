@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { usePos } from '../../context/pos-context';
 import type { Outlet } from '../../types/pos';
 import {
@@ -59,6 +59,8 @@ export function PosHeader({
     simulateRole,
   } = usePos();
 
+  const router = useRouter();
+
   const canAccessSettings = roleCode === 'OWNER' || roleCode === 'ADMIN';
 
   const isPos = variant ? variant === 'pos' : Boolean(onOpenSessionClick || onCloseSessionClick);
@@ -80,29 +82,52 @@ export function PosHeader({
   }, [mobileNavOpen]);
 
   const handleOutletSelect = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const targetId = e.target.value;
+    const selectElement = e.target;
+    const previousValue = currentOutlet?.id || '';
+    const targetId = selectElement.value;
     const target = availableOutlets.find((o) => o.id === targetId);
-    if (!target) return;
+    if (!target) {
+      selectElement.value = previousValue;
+      return;
+    }
     if (onBeforeOutletChange) {
       const allowed = await onBeforeOutletChange(target);
-      if (!allowed) return;
+      if (!allowed) {
+        selectElement.value = previousValue;
+        return;
+      }
     }
     setCurrentOutlet(target);
   };
 
   const handleNavClick = async (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    // 1. Same-page click: prevent navigation, close mobile menu, no confirmation required
     if (pathname === href) {
+      e.preventDefault();
       setMobileNavOpen(false);
       return;
     }
-    if (onBeforeNavigate) {
-      const allowed = await onBeforeNavigate(href);
-      if (!allowed) {
-        e.preventDefault();
-        return;
-      }
+
+    // 2. If no navigation guard is provided, allow default Next.js Link navigation
+    if (!onBeforeNavigate) {
+      setMobileNavOpen(false);
+      return;
     }
+
+    // 3. Navigation guard is active: IMMEDIATELY prevent default navigation synchronously
+    e.preventDefault();
+
+    // 4. Await decision (supports boolean and Promise<boolean>)
+    const allowed = await onBeforeNavigate(href);
+
+    // 5. If Cancel: stay on current page, do not navigate
+    if (!allowed) {
+      return;
+    }
+
+    // 6. If Allow: close mobile menu and navigate programmatically
     setMobileNavOpen(false);
+    router.push(href);
   };
 
   const getNavLinkClass = (href: string, extraStyle?: string) => {
