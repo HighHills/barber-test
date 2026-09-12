@@ -58,6 +58,16 @@ export function OutletFormModal({
     setErrorMessage(null);
   }, [editingOutlet, isOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,9 +100,14 @@ export function OutletFormModal({
       });
       onClose();
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan data outlet'
-      );
+      const pgErr = err as { code?: string; message?: string };
+      if (pgErr?.code === '23505') {
+        setErrorMessage('Kode cabang sudah digunakan. Gunakan kode yang berbeda.');
+      } else {
+        setErrorMessage(
+          err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan data outlet'
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -101,17 +116,17 @@ export function OutletFormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
-              <Store className="w-5 h-5" />
+        {/* Header (No decorative gradient) */}
+        <div className="p-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Store className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-base font-bold text-white leading-tight">
                 {editingOutlet ? 'Edit Cabang Outlet' : 'Tambah Cabang Baru'}
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 mt-0.5">
                 {editingOutlet
                   ? `Perbarui informasi cabang ${editingOutlet.code}`
                   : 'Daftarkan cabang outlet barbershop baru'}
@@ -119,115 +134,151 @@ export function OutletFormModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isSubmitting}
+            aria-label="Tutup modal cabang"
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 text-xs">
           {errorMessage && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-300 flex items-start gap-2">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* SECTION 1: IDENTITAS CABANG */}
+          <div className="space-y-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                Kode Cabang <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="Contoh: BND-01"
-                required
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white uppercase placeholder-slate-600 focus:outline-none font-mono"
-              />
-            </div>
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+                Identitas Cabang
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">
+                    Kode Cabang <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="Contoh: BND-01"
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 uppercase placeholder-slate-600 focus:outline-none font-mono transition"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                Nama Cabang <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Contoh: Cabang Bandung Dago"
-                required
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white placeholder-slate-600 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Telepon Cabang</label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="022-8765432"
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white placeholder-slate-600 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Email Cabang</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="dago@barbershop.id"
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white placeholder-slate-600 focus:outline-none"
-              />
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">
+                    Nama Cabang <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Contoh: Cabang Bandung Dago"
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Alamat Lengkap Cabang</label>
-            <textarea
-              rows={2}
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Jl. Ir. H. Juanda No. 120, Bandung"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white placeholder-slate-600 focus:outline-none resize-none"
-            />
-          </div>
+          <div className="border-t border-slate-800/80" />
 
-          <div className="grid grid-cols-2 gap-3 items-center pt-1">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Zona Waktu</label>
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-white focus:outline-none"
-              >
-                <option value="Asia/Jakarta">WIB (Asia/Jakarta)</option>
-                <option value="Asia/Makassar">WITA (Asia/Makassar)</option>
-                <option value="Asia/Jayapura">WIT (Asia/Jayapura)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Status Operasional</label>
-              <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+          {/* SECTION 2: LOKASI & KONTAK */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              Lokasi & Kontak
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Telepon / WhatsApp
+                </label>
                 <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="08123456789"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
                 />
-                <span className={isActive ? 'text-emerald-400 font-semibold' : 'text-slate-500'}>
-                  {isActive ? 'Cabang Aktif' : 'Nonaktif'}
-                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Email Cabang
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="dago@barbershop.id"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1.5">
+                Alamat Lengkap Cabang
               </label>
+              <textarea
+                rows={2}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Jl. Ir. H. Juanda No. 120, Bandung"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-slate-800/80" />
+
+          {/* SECTION 3: KONFIGURASI */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              Konfigurasi
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Zona Waktu
+                </label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none transition cursor-pointer"
+                >
+                  <option value="Asia/Jakarta">WIB (Asia/Jakarta)</option>
+                  <option value="Asia/Makassar">WITA (Asia/Makassar)</option>
+                  <option value="Asia/Jayapura">WIT (Asia/Jayapura)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Status Operasional
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
+                  <span className={isActive ? 'text-emerald-400 font-semibold text-xs' : 'text-slate-400 text-xs'}>
+                    {isActive ? 'Cabang Beroperasi' : 'Nonaktif'}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
             </div>
           </div>
 
@@ -237,14 +288,14 @@ export function OutletFormModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition"
+              className="px-4 py-2.5 font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition border border-slate-700 text-xs"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-5 py-2 font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl transition shadow-md shadow-amber-500/20 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl transition shadow-xs shadow-amber-500/20 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
