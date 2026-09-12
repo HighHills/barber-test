@@ -52,6 +52,16 @@ export function ServiceCategoryModal({
     setFormError(null);
   }, [category, isOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,110 +115,140 @@ export function ServiceCategoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <Tags className="w-5 h-5" />
+        <div className="p-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Tags className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white leading-tight">
+              <h3 className="text-base font-bold text-white leading-tight">
                 {isEditing ? 'Ubah Kategori Layanan' : 'Tambah Kategori Layanan'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                Pengelompokan menu pangkas rambut, cukur, & treatment
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isEditing
+                  ? `Perbarui informasi kategori ${category?.name}`
+                  : 'Daftarkan pengelompokan menu pangkas rambut, cukur, & treatment'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            aria-label="Tutup modal kategori layanan"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 text-xs">
           {formError && (
-            <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{formError}</span>
             </div>
           )}
 
-          {/* Name */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">
-              Nama Kategori <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Haircut & Styling, Shaving & Beard"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-            />
+          {/* Section 1: Identitas Kategori */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              Identitas Kategori
+            </span>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Nama Kategori <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Haircut & Styling, Shaving & Beard"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Deskripsi <span className="text-slate-500 font-normal">(Opsional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Keterangan singkat kelompok layanan..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition resize-none"
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Deskripsi</label>
-            <textarea
-              rows={2}
-              placeholder="Keterangan singkat kelompok layanan..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs resize-none"
-            />
+          <div className="border-t border-slate-800/80" />
+
+          {/* Section 2: Konfigurasi & Status */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              Konfigurasi & Status
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Urutan Tampilan
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:outline-none transition"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Angka lebih kecil tampil lebih awal di menu POS.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Status Operasional
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
+                  <span className={isActive ? 'text-emerald-400 font-semibold text-xs' : 'text-slate-400 text-xs'}>
+                    {isActive ? 'Kategori Aktif' : 'Nonaktif'}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                </label>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Kategori aktif dapat dipilih saat membuat layanan.
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Sort Order */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Urutan Tampilan (Sort Order)</label>
-            <input
-              type="number"
-              min={0}
-              value={sortOrder}
-              onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
-            />
-            <p className="text-[10px] text-slate-500">Angka lebih kecil tampil lebih awal di menu POS.</p>
-          </div>
-
-          {/* Active Status Toggle */}
-          <div className="pt-1">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
-              />
-              <span className="text-slate-300 font-medium">
-                Kategori Aktif (Dapat dipilih di katalog layanan)
-              </span>
-            </label>
-          </div>
-
-          {/* Action Buttons */}
+          {/* Footer */}
           <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold"
+              className="px-4 py-2.5 font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition border border-slate-700 text-xs"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-500/20 transition disabled:opacity-50 text-xs"
+              className="flex items-center gap-2 px-5 py-2.5 font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl transition shadow-xs shadow-amber-500/20 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
@@ -228,3 +268,4 @@ export function ServiceCategoryModal({
     </div>
   );
 }
+

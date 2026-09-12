@@ -88,6 +88,10 @@ export function ServiceCategoriesPanel({
     loadCategories();
   }, [loadCategories]);
 
+  // Operational Counts
+  const activeCount = useMemo(() => categories.filter((c) => c.is_active).length, [categories]);
+  const inactiveCount = useMemo(() => categories.length - activeCount, [categories, activeCount]);
+
   // 2. Toggle active via RPC save_service_category
   const handleToggleActive = async (category: ServiceCategoryItem) => {
     const newStatus = !category.is_active;
@@ -106,9 +110,9 @@ export function ServiceCategoriesPanel({
 
       onNotification?.({
         type: 'SUCCESS',
-        message: `Kategori "${category.name}" berhasil diubah menjadi: ${
-          newStatus ? 'AKTIF' : 'NONAKTIF'
-        }`,
+        message: `Kategori "${category.name}" berhasil ${
+          newStatus ? 'diaktifkan' : 'dinonaktifkan'
+        }.`,
       });
 
       setCategories((prev) =>
@@ -127,10 +131,10 @@ export function ServiceCategoriesPanel({
 
   // Filtered categories
   const filteredCategories = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
     return categories.filter((c) => {
-      const q = searchQuery.toLowerCase();
       const matchQuery =
-        !searchQuery ||
+        !q ||
         c.name.toLowerCase().includes(q) ||
         (c.description && c.description.toLowerCase().includes(q));
 
@@ -146,37 +150,45 @@ export function ServiceCategoriesPanel({
   }, [categories, searchQuery, statusFilter]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Header Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6 shadow-xs">
+      {/* Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 uppercase tracking-wider">
-            <Tags className="w-4 h-4" />
-            <span>POS & Etalase Katalog</span>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Tags className="w-4 h-4" />
+            </div>
+            <h2 className="text-base font-bold text-white leading-tight">
+              Kategori Layanan
+            </h2>
           </div>
-          <h2 className="text-xl font-bold text-white mt-1">Kategori Layanan Jasa</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Kelompokkan menu treatment, haircut, dan shaving untuk kemudahan kasir dan booking online
+          <p className="text-xs text-slate-400 mt-1">
+            Kelola kelompok menu treatment, pangkas rambut, dan cukur untuk katalog POS.
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {categories.length} kategori · {activeCount} aktif · {inactiveCount} nonaktif
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
+            type="button"
             onClick={() => loadCategories(true)}
             disabled={isRefreshing || isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700"
-            title="Muat Ulang Data"
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80"
+            title="Muat ulang data kategori"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Segarkan</span>
           </button>
 
           <button
+            type="button"
             onClick={() => {
               setEditingCategory(null);
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-xs shadow-md shadow-amber-500/20 transition"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-xs shadow-amber-500/20"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah Kategori</span>
@@ -185,121 +197,144 @@ export function ServiceCategoriesPanel({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex-1 relative text-xs">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari kategori layanan..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition text-xs"
+            placeholder="Cari nama atau deskripsi kategori..."
+            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
           />
         </div>
 
-        <div className="w-full sm:w-48 text-xs">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
-          >
-            <option value="ALL">Semua Status</option>
-            <option value="ACTIVE">Hanya Aktif</option>
-            <option value="INACTIVE">Hanya Nonaktif</option>
-          </select>
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs shrink-0 self-start sm:self-auto">
+          {(
+            [
+              { id: 'ALL', label: `Semua (${categories.length})` },
+              { id: 'ACTIVE', label: `Aktif (${activeCount})` },
+              { id: 'INACTIVE', label: `Nonaktif (${inactiveCount})` },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStatusFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                statusFilter === tab.id
+                  ? 'bg-slate-800 text-amber-300 font-semibold shadow-xs border border-slate-700/80'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Content Table / Cards */}
-      {isLoading ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-amber-500" />
-          <p className="text-sm font-medium">Memuat data kategori layanan...</p>
-        </div>
-      ) : filteredCategories.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
-          <Tags className="w-12 h-12 mx-auto mb-3 text-slate-600 opacity-60" />
-          <p className="text-sm font-semibold text-white">Tidak ada kategori layanan yang sesuai</p>
-          <p className="text-xs text-slate-500 mt-1">
-            Klik tombol "Tambah Kategori" di atas untuk membuat pengelompokan menu baru.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCategories.map((cat) => {
-            const isToggling = togglingId === cat.id;
+      {/* Dense Operational List */}
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-16 space-y-3">
+            <Loader2 className="w-7 h-7 animate-spin text-amber-500" />
+            <p className="text-xs text-slate-400">Memuat data kategori layanan...</p>
+          </div>
+        ) : filteredCategories.length === 0 ? (
+          <div className="p-12 text-center text-xs text-slate-500">
+            Tidak ada kategori layanan yang sesuai dengan filter atau pencarian Anda.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-800/80">
+            {filteredCategories.map((cat) => {
+              const isToggling = togglingId === cat.id;
 
-            return (
-              <div
-                key={cat.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition flex flex-col justify-between space-y-3"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-mono font-bold text-amber-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                      Sort: {cat.sort_order}
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        cat.is_active
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                      }`}
-                    >
-                      {cat.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
+              return (
+                <div
+                  key={cat.id}
+                  className="p-4 sm:p-5 transition hover:bg-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  {/* Left Side: Hierarchy & Information */}
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-bold text-white leading-tight">
+                        {cat.name}
+                      </h3>
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300">
+                        <Layers className="w-3 h-3 text-amber-400/80" />
+                        <span>{cat.service_count} layanan</span>
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500 bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-800/60">
+                        Urutan {cat.sort_order}
+                      </span>
+                    </div>
+
+                    {/* Description (Rendered ONLY if present) */}
+                    {cat.description && cat.description.trim() ? (
+                      <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
+                        {cat.description}
+                      </p>
+                    ) : null}
                   </div>
 
-                  <h3 className="text-sm font-bold text-white leading-snug">{cat.name}</h3>
-
-                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                    {cat.description || 'Tidak ada deskripsi.'}
-                  </p>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-400">
-                    <Layers className="w-3.5 h-3.5 text-slate-500" />
-                    <span>
-                      <strong className="text-white">{cat.service_count}</strong> layanan
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => {
-                        setEditingCategory(cat);
-                        setIsModalOpen(true);
-                      }}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                      title="Ubah Kategori"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-amber-400" />
-                    </button>
-
-                    <button
-                      onClick={() => handleToggleActive(cat)}
-                      disabled={isToggling}
-                      className={`p-1.5 rounded-lg border transition ${
-                        cat.is_active
-                          ? 'bg-red-950/40 hover:bg-red-900/60 text-red-400 border-red-500/30'
-                          : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 border-emerald-500/30'
-                      }`}
-                      title={cat.is_active ? 'Nonaktifkan Kategori' : 'Aktifkan Kategori'}
-                    >
-                      {isToggling ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {/* Right Side: Operational Status & Explicit Actions */}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t border-slate-800/60 sm:border-t-0 shrink-0">
+                    {/* Operational Status */}
+                    <div className="pr-1">
+                      {cat.is_active ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          Aktif
+                        </span>
                       ) : (
-                        <Power className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-slate-600 shrink-0" />
+                          Nonaktif
+                        </span>
                       )}
-                    </button>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategory(cat);
+                          setIsModalOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 font-medium text-xs transition"
+                        title={`Edit ${cat.name}`}
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(cat)}
+                        disabled={isToggling}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition text-xs font-medium ${
+                          cat.is_active
+                            ? 'bg-slate-900 hover:bg-red-950/40 text-slate-400 hover:text-red-300 border-slate-800 hover:border-red-900/50'
+                            : 'bg-emerald-950/30 hover:bg-emerald-950/50 text-emerald-400 border-emerald-500/30 hover:border-emerald-500/50'
+                        }`}
+                        title={cat.is_active ? `Nonaktifkan ${cat.name}` : `Aktifkan ${cat.name}`}
+                      >
+                        {isToggling ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Power className="w-3.5 h-3.5" />
+                        )}
+                        <span>{cat.is_active ? 'Nonaktifkan' : 'Aktifkan'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Category Modal */}
       <ServiceCategoryModal
@@ -315,3 +350,4 @@ export function ServiceCategoriesPanel({
     </div>
   );
 }
+
