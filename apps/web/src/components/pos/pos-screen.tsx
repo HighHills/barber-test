@@ -232,6 +232,7 @@ export function PosScreen(): React.JSX.Element {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-100">
       {/* Header */}
       <PosHeader
+        variant="pos"
         onOpenSessionClick={() => setSessionModalMode('OPEN')}
         onCloseSessionClick={() => setSessionModalMode('CLOSE')}
       />

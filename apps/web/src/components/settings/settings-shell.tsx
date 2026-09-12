@@ -15,6 +15,7 @@ import { ServicesPanel } from './services-panel';
 import { ProductCategoriesPanel } from './product-categories-panel';
 import { ProductsPanel } from './products-panel';
 import { PaymentMethodsPanel } from './payment-methods-panel';
+import type { Outlet } from '../../types/pos';
 import {
   Building2,
   Store,
@@ -27,7 +28,6 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
-  Menu,
   Scissors,
   Package,
   CreditCard,
@@ -101,6 +101,18 @@ export function SettingsShell(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [notification]);
 
+  // Browser tab close / reload protection when settings are dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSectionDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSectionDirty]);
+
   const handleSelectSection = (newSection: SettingsSectionId) => {
     if (newSection === activeSection) {
       setMobileMenuOpen(false);
@@ -119,10 +131,36 @@ export function SettingsShell(): React.JSX.Element {
     setMobileMenuOpen(false);
   };
 
+  const handleBeforeOutletChange = (_targetOutlet: Outlet): boolean => {
+    if (isSectionDirty) {
+      const confirmSwitch = window.confirm(
+        'Ada perubahan pengaturan yang belum disimpan. Yakin ingin berpindah cabang dan membuang perubahan?'
+      );
+      if (!confirmSwitch) return false;
+      setIsSectionDirty(false);
+    }
+    return true;
+  };
+
+  const handleBeforeNavigate = (_href: string): boolean => {
+    if (isSectionDirty) {
+      const confirmLeave = window.confirm(
+        'Ada perubahan pengaturan yang belum disimpan. Yakin ingin meninggalkan halaman pengaturan dan membuang perubahan?'
+      );
+      if (!confirmLeave) return false;
+      setIsSectionDirty(false);
+    }
+    return true;
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* 1. Unified Application Header (matching POS & OS shell) */}
-      <PosHeader />
+      {/* 1. Unified Application Header (matching POS & OS shell, with POS state isolation and dirty guards) */}
+      <PosHeader
+        variant="app"
+        onBeforeOutletChange={handleBeforeOutletChange}
+        onBeforeNavigate={handleBeforeNavigate}
+      />
 
       {/* 2. Operational Context Sub-Header */}
       <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
@@ -141,16 +179,20 @@ export function SettingsShell(): React.JSX.Element {
             </div>
           </div>
 
-          {/* Mobile Category Navigation Button */}
+          {/* Mobile Category Navigation Button (distinct from Header Menu) */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition"
             aria-expanded={mobileMenuOpen}
-            aria-label="Toggle menu navigasi pengaturan"
+            aria-label="Toggle menu kategori pengaturan"
           >
-            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            <span>Kategori</span>
+            {mobileMenuOpen ? (
+              <X className="w-4 h-4" />
+            ) : (
+              <Layers className="w-4 h-4 text-amber-400" />
+            )}
+            <span>Kategori Pengaturan</span>
           </button>
         </div>
       </section>
