@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   FinancialAccountBalanceView,
@@ -12,6 +11,7 @@ import type {
   CashSessionDetailedReconciliation,
   FinancialPeriodView,
 } from '../../types/pos';
+import { PosHeader } from '../../components/pos/pos-header';
 import { IncomeStatementView } from '../../components/accounting/income-statement-view';
 import { BalanceSheetView } from '../../components/accounting/balance-sheet-view';
 import { TrialBalanceTable } from '../../components/accounting/trial-balance-table';
@@ -22,18 +22,12 @@ import { FinancialPeriodsManager } from '../../components/accounting/financial-p
 import { CashSessionModal } from '../../components/pos/cash-session-modal';
 import { RoleGuard } from '../../components/auth/role-guard';
 import {
-  ArrowLeft,
-  Store,
   RefreshCw,
   TrendingUp,
   Scale,
   BookOpen,
   Calendar,
   Wallet,
-  Coins,
-  Scissors,
-  Package,
-  Users,
   CheckCircle2,
   AlertCircle,
   X,
@@ -44,8 +38,6 @@ function AccountingContent(): React.JSX.Element {
   const {
     supabase,
     currentOutlet,
-    availableOutlets,
-    setCurrentOutlet,
     profile,
     closeSession,
     refreshData,
@@ -591,120 +583,37 @@ function AccountingContent(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-      {/* 1. Global Top Navigation Header */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-4 py-3 sticky top-0 z-30 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3 max-w-7xl mx-auto w-full">
-          {/* Brand & Outlet Selector */}
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
+
+      {/* 2. Operational Sub-Header (Laporan Akuntansi & Keuangan Context) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-              title="Kembali ke Kasir POS"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
-                📊
-              </span>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white leading-tight flex items-center gap-2">
-                  <span>Laporan Akuntansi & Keuangan</span>
-                  <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    Double-Entry
-                  </span>
-                </h1>
-                <p className="text-[11px] text-amber-400 font-medium">
-                  Buku Besar, Neraca Saldo, Laba Rugi & Rekonsiliasi Kasir
-                </p>
-              </div>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Scale className="w-4 h-4" />
             </div>
-
-            <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block" />
-
-            {/* Outlet Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs">
-              <Store className="w-3.5 h-3.5 text-amber-400" />
-              <select
-                value={currentOutlet?.id || ''}
-                onChange={(e) => {
-                  const target = availableOutlets.find((o) => o.id === e.target.value);
-                  if (target) setCurrentOutlet(target);
-                }}
-                className="bg-transparent text-slate-100 font-medium focus:outline-none cursor-pointer pr-1"
-              >
-                {availableOutlets.map((outlet) => (
-                  <option key={outlet.id} value={outlet.id} className="bg-slate-900 text-white">
-                    {outlet.name} ({outlet.code})
-                  </option>
-                ))}
-              </select>
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                Laporan Akuntansi & Keuangan
+              </h1>
+              <p className="text-xs text-slate-400">
+                Buku Besar, Neraca Saldo, Laba Rugi & Rekonsiliasi Kasir
+              </p>
             </div>
           </div>
 
-          {/* Quick Action Navigation Links */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors cursor-pointer"
-              title="Muat ulang seluruh data laporan"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-
-            <div className="h-5 w-px bg-slate-700 mx-0.5 hidden sm:block" />
-
-            <Link
-              href="/"
-              className="hidden sm:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <span>POS Kasir</span>
-            </Link>
-
-            <Link
-              href="/queue"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Scissors className="w-3.5 h-3.5 text-amber-400" />
-              <span>Antrean</span>
-            </Link>
-
-            <Link
-              href="/inventory"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Package className="w-3.5 h-3.5 text-amber-400" />
-              <span>Inventori</span>
-            </Link>
-
-            <Link
-              href="/commissions"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              <span>Komisi</span>
-            </Link>
-
-            <Link
-              href="/customers"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Users className="w-3.5 h-3.5 text-purple-400" />
-              <span>Pelanggan</span>
-            </Link>
-
-            <Link
-              href="/analytics"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-              <span>Analitik</span>
-            </Link>
-          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px] self-start sm:self-auto"
+            title="Muat ulang seluruh data laporan"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
+            <span className="hidden sm:inline">Segarkan</span>
+          </button>
         </div>
-      </header>
+      </section>
 
       {/* 2. Main Body Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">

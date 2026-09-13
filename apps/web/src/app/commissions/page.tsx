@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   CommissionItemView,
@@ -9,35 +8,27 @@ import type {
   BarberCommissionSummary,
   CatalogItem,
 } from '../../types/pos';
+import { PosHeader } from '../../components/pos/pos-header';
 import { CommissionLedgerTable } from '../../components/commissions/commission-ledger-table';
 import { CommissionRulesManager } from '../../components/commissions/commission-rules-manager';
 import { BarberPerformanceRank } from '../../components/commissions/barber-performance-rank';
 import { CommissionRuleModal } from '../../components/commissions/commission-rule-modal';
 import { CommissionPayoutModal } from '../../components/commissions/commission-payout-modal';
 import {
-  ArrowLeft,
   Coins,
   Sliders,
   Trophy,
   RefreshCw,
   Plus,
-  History,
-  Package,
   CheckCircle2,
   AlertCircle,
   X,
-  Store,
-  BarChart3,
-  Users,
-  TrendingUp,
 } from 'lucide-react';
 
 function CommissionsContent(): React.JSX.Element {
   const {
     supabase,
     currentOutlet,
-    availableOutlets,
-    setCurrentOutlet,
     barbers,
     isCashier,
   } = usePos();
@@ -336,148 +327,49 @@ function CommissionsContent(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-4 py-3 sticky top-0 z-30 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Brand & Outlet */}
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
+
+      {/* 2. Operational Sub-Header (Komisi & Performa Kapster Context) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-              title="Kembali ke Kasir POS"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
-                💈
-              </span>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white leading-tight flex items-center gap-2">
-                  <span>Komisi & Performa Kapster</span>
-                  <span className="text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                    8-Tier Engine
-                  </span>
-                </h1>
-                <p className="text-[11px] text-amber-400 font-medium">
-                  Buku Besar Komisi, Settlement Payout & Analisis Kinerja
-                </p>
-              </div>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Coins className="w-4 h-4" />
             </div>
-
-            <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block" />
-
-            {/* Outlet Selector / Locked Badge for Cashier */}
-            {isCashier ? (
-              <div
-                className="flex items-center gap-1.5 bg-slate-800/90 border border-amber-500/40 px-2.5 py-1.5 rounded-lg text-xs"
-                title="Cabang terkunci khusus penugasan akun kasir ini"
-              >
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-semibold text-white truncate max-w-[140px]">
-                  {currentOutlet?.name || 'Cabang Kasir'}
-                </span>
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-bold ml-1">
-                  Terkunci
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs">
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <select
-                  value={currentOutlet?.id || ''}
-                  onChange={(e) => {
-                    const target = availableOutlets.find((o) => o.id === e.target.value);
-                    if (target) setCurrentOutlet(target);
-                  }}
-                  className="bg-transparent text-slate-100 font-medium focus:outline-none cursor-pointer pr-1"
-                >
-                  {availableOutlets.map((outlet) => (
-                    <option key={outlet.id} value={outlet.id} className="bg-slate-900 text-white">
-                      {outlet.name} ({outlet.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                Komisi & Performa Kapster
+              </h1>
+              <p className="text-xs text-slate-400">
+                Buku Besar Komisi, Settlement Payout & Analisis Kinerja
+              </p>
+            </div>
           </div>
 
-          {/* Quick Actions & Navigation Links */}
-          <div className="flex items-center gap-2.5">
-            {!isCashier && (
-              <button
-                onClick={() => setIsRuleModalOpen(true)}
-                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Aturan Komisi</span>
-              </button>
-            )}
-
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
-              title="Muat ulang data"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px]"
+              title="Muat ulang data komisi"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
+              <span className="hidden sm:inline">Segarkan</span>
             </button>
 
-            <div className="h-5 w-px bg-slate-700 mx-0.5 hidden sm:block" />
-
-            <Link
-              href="/history"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Riwayat Nota Penjualan"
-            >
-              <History className="w-3.5 h-3.5 text-amber-400" />
-              <span>Riwayat</span>
-            </Link>
-
-            <Link
-              href="/inventory"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Manajemen Inventori"
-            >
-              <Package className="w-3.5 h-3.5 text-amber-400" />
-              <span>Inventori</span>
-            </Link>
-
-            <Link
-              href="/customers"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="CRM, Member & Program Loyalitas"
-            >
-              <Users className="w-3.5 h-3.5 text-sky-400" />
-              <span>Pelanggan</span>
-            </Link>
-
-            {/* OWNER ONLY */}
             {!isCashier && (
-              <>
-                <Link
-                  href="/accounting"
-                  className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-                  title="Laporan Keuangan & Akuntansi"
-                >
-                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Keuangan</span>
-                </Link>
-
-                <Link
-                  href="/analytics"
-                  className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-                  title="Analitik Bisnis & Dashboard Owner"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Analitik</span>
-                </Link>
-              </>
+              <button
+                onClick={() => setIsRuleModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs transition min-h-[40px]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Aturan Komisi</span>
+              </button>
             )}
           </div>
         </div>
-      </header>
+      </section>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">

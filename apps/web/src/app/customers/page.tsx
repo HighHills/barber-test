@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   CustomerDetailCRM,
@@ -10,37 +9,28 @@ import type {
   HaircutHistoryEntry,
   HaircutPreferenceData,
 } from '../../types/pos';
+import { PosHeader } from '../../components/pos/pos-header';
 import { CustomerCrmTable } from '../../components/crm/customer-crm-table';
 import { CustomerDetailModal } from '../../components/crm/customer-detail-modal';
 import { CustomerFormModal } from '../../components/crm/customer-form-modal';
 import { TierConfigPanel } from '../../components/crm/tier-config-panel';
 import { LoyaltyLedgerView } from '../../components/crm/loyalty-ledger-view';
 import {
-  ArrowLeft,
   RefreshCw,
   Users,
   Crown,
   Coins,
-  Scissors,
-  Package,
-  History,
-  BarChart3,
   CheckCircle2,
   AlertCircle,
   X,
-  Building2,
-  TrendingUp,
 } from 'lucide-react';
 
 function CustomersContent(): React.JSX.Element {
   const {
     supabase,
     currentOutlet,
-    availableOutlets,
-    setCurrentOutlet,
     profile,
     refreshData,
-    isCashier,
   } = usePos();
 
   const [activeTab, setActiveTab] = useState<'CUSTOMERS' | 'TIERS' | 'LOYALTY_LEDGER'>('CUSTOMERS');
@@ -680,144 +670,41 @@ function CustomersContent(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Kembali ke Layar Kasir POS"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
 
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-base font-black tracking-tight text-white flex items-center gap-2">
-                  <span>CRM Pelanggan & Loyalitas</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    Phase 6
-                  </span>
-                </h1>
-                <p className="text-[11px] text-slate-400">
-                  Data Pelanggan, Tingkatan Membership, dan Buku Besar Poin
-                </p>
-              </div>
+      {/* 2. Operational Sub-Header (CRM Pelanggan & Loyalitas Context) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                CRM Pelanggan & Loyalitas
+              </h1>
+              <p className="text-xs text-slate-400">
+                Data Pelanggan, Tingkatan Membership, dan Buku Besar Poin
+              </p>
             </div>
           </div>
 
-          {/* Navigation Bar Links */}
-          <div className="hidden md:flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700 text-xs">
-            <Link
-              href="/"
-              className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>Kasir POS</span>
-            </Link>
-            <Link
-              href="/queue"
-              className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Antrean</span>
-            </Link>
-            <Link
-              href="/history"
-              className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>Nota</span>
-            </Link>
-            <Link
-              href="/inventory"
-              className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>Inventori</span>
-            </Link>
-            <Link
-              href="/commissions"
-              className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-            >
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              <span>Komisi</span>
-            </Link>
-
-            {/* OWNER ONLY */}
-            {!isCashier && (
-              <>
-                <Link
-                  href="/accounting"
-                  className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-                >
-                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Keuangan</span>
-                </Link>
-                <Link
-                  href="/analytics"
-                  className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 font-semibold transition-colors flex items-center gap-1.5"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Analitik</span>
-                </Link>
-              </>
-            )}
-          </div>
-
-          {/* Outlet Switcher & Actions */}
-          <div className="flex items-center gap-3">
-            {isCashier ? (
-              <div
-                className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-amber-500/40 text-xs"
-                title="Cabang terkunci khusus penugasan akun kasir ini"
-              >
-                <Building2 className="w-4 h-4 text-amber-400" />
-                <span className="text-white font-bold truncate max-w-[130px]">
-                  {currentOutlet?.name || 'Cabang Kasir'}
-                </span>
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-bold ml-1">
-                  Terkunci
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-                <Building2 className="w-4 h-4 text-amber-500" />
-                <select
-                  value={currentOutlet?.id || ''}
-                  onChange={(e) => {
-                    const out = availableOutlets.find((o) => o.id === e.target.value);
-                    if (out) setCurrentOutlet(out);
-                  }}
-                  className="bg-transparent text-white font-bold outline-hidden cursor-pointer"
-                >
-                  {availableOutlets.map((o) => (
-                    <option key={o.id} value={o.id} className="bg-slate-800 text-white">
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <button
-              onClick={() => {
-                loadCustomers();
-                loadLoyaltyLedger();
-                refreshData();
-              }}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Perbarui Data"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              loadCustomers();
+              loadLoyaltyLedger();
+              refreshData();
+            }}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px] self-start sm:self-auto"
+            title="Perbarui Data Pelanggan"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+            <span className="hidden sm:inline">Segarkan</span>
+          </button>
         </div>
-      </header>
+      </section>
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">

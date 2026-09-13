@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import { RoleGuard } from '../../components/auth/role-guard';
 import type { PurchaseOrderItem, SupplierItem, PurchaseStatus, PurchasePaymentStatus } from '../../types/purchases';
 import { formatCurrency, formatDateTime } from '../../lib/formatters';
+import { PosHeader } from '../../components/pos/pos-header';
 import { PurchaseOrderModal } from '../../components/purchases/purchase-order-modal';
 import { SupplierPaymentModal } from '../../components/purchases/supplier-payment-modal';
 import { SupplierFormModal } from '../../components/purchases/supplier-form-modal';
@@ -14,7 +14,6 @@ import {
   ShoppingBag,
   Plus,
   Search,
-  ArrowLeft,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -27,12 +26,6 @@ import {
   CreditCard,
   Boxes,
   ExternalLink,
-  Package,
-  Users,
-  BarChart3,
-  TrendingUp,
-  RotateCcw,
-  PlayCircle,
   Store,
   Wallet,
   Clock,
@@ -46,10 +39,6 @@ function PurchasesContent(): React.JSX.Element {
   const {
     supabase,
     availableOutlets,
-    currentOutlet,
-    simulatedRole,
-    assignedOutletId,
-    simulateRole,
     profile,
   } = usePos();
 
@@ -360,102 +349,37 @@ Kuantitas stok produk di ${po.outlet_name} akan otomatis bertambah, Moving Avera
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800">
-      {/* 1. Global Header */}
-      <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
+
+      {/* 2. Operational Sub-Header (Manajemen Pembelian & Hutang Supplier Context) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 text-xs font-semibold transition border border-slate-700"
-              title="Kembali ke Terminal POS"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span>POS Terminal</span>
-            </Link>
-
-            <div className="h-5 w-px bg-slate-700 hidden sm:block" />
-
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Truck className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-white leading-tight">
-                  Manajemen Pembelian & Hutang Supplier
-                </h1>
-                <p className="text-[11px] text-slate-400">
-                  Pengadaan Stok, Penerimaan Barang & Akuntansi Hutang Usaha
-                </p>
-              </div>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Truck className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                Manajemen Pembelian & Hutang Supplier
+              </h1>
+              <p className="text-xs text-slate-400">
+                Pengadaan Stok, Penerimaan Barang & Akuntansi Hutang Usaha
+              </p>
             </div>
           </div>
 
-          {/* Quick Navigation Links */}
-          <div className="flex items-center gap-2">
-            <Link
-              href="/inventory"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 transition"
-              title="Manajemen Persediaan Stok Cabang"
-            >
-              <Package className="w-3.5 h-3.5 text-amber-400" />
-              <span>Stok</span>
-            </Link>
-            <Link
-              href="/accounting"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 transition"
-              title="Laporan Keuangan & Akuntansi (Owner)"
-            >
-              <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Keuangan</span>
-            </Link>
-            <Link
-              href="/analytics"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 transition"
-              title="Analitik Bisnis Eksekutif (Owner)"
-            >
-              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-              <span>Analitik</span>
-            </Link>
-            <Link
-              href="/subaccounts"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 transition"
-              title="Kelola Sub-Akun Kasir"
-            >
-              <Users className="w-3.5 h-3.5 text-purple-400" />
-              <span>Sub-Akun</span>
-            </Link>
-
-            <button
-              onClick={loadAll}
-              disabled={loading}
-              className="rounded-xl border border-slate-700 bg-slate-800 p-2 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-              title="Muat Ulang Data Pembelian"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
-            </button>
-          </div>
+          <button
+            onClick={loadAll}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px] self-start sm:self-auto"
+            title="Muat Ulang Data Pembelian"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />
+            <span className="hidden sm:inline">Segarkan</span>
+          </button>
         </div>
-
-        {/* Simulation Banner if Active */}
-        {simulatedRole && (
-          <div className="border-t border-amber-500/30 bg-amber-500/15 px-6 py-2 text-xs text-amber-300 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <PlayCircle className="h-4 w-4 animate-pulse text-amber-400" />
-              <span>
-                Mode Simulasi Kasir Aktif: Outlet Terkunci di{' '}
-                <strong>{currentOutlet?.name || assignedOutletId}</strong>
-              </span>
-            </div>
-            <button
-              onClick={() => simulateRole(null)}
-              className="flex items-center gap-1 rounded bg-amber-500 px-2 py-0.5 font-bold text-slate-950 transition hover:bg-amber-400"
-            >
-              <RotateCcw className="h-3 w-3" />
-              Kembalikan Akses Owner
-            </button>
-          </div>
-        )}
-      </header>
+      </section>
 
       {/* 2. Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   ExecutiveKPIStats,
@@ -11,6 +10,7 @@ import type {
   BarberProductivityMetric,
   TopCatalogItemMetric,
 } from '../../types/pos';
+import { PosHeader } from '../../components/pos/pos-header';
 import { ExecutiveKpiCards } from '../../components/analytics/executive-kpi-cards';
 import { RevenueTrendChart } from '../../components/analytics/revenue-trend-chart';
 import { MultiOutletComparison } from '../../components/analytics/multi-outlet-comparison';
@@ -19,18 +19,11 @@ import { BarberProductivityRank } from '../../components/analytics/barber-produc
 import { TopServicesProducts } from '../../components/analytics/top-services-products';
 import { RoleGuard } from '../../components/auth/role-guard';
 import {
-  ArrowLeft,
   Store,
   RefreshCw,
   Download,
   Printer,
   TrendingUp,
-  Scissors,
-  History,
-  Package,
-  Coins,
-  BarChart3,
-  Users,
 } from 'lucide-react';
 
 type PeriodFilter = 'TODAY' | '7D' | '30D' | 'THIS_MONTH';
@@ -520,89 +513,37 @@ function AnalyticsContent(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-4 py-3 sticky top-0 z-30 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3 max-w-7xl mx-auto w-full">
-          {/* Brand & Title */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-              title="Kembali ke Kasir POS"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
 
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
-                <TrendingUp className="w-4 h-4 text-slate-950" />
-              </span>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white leading-tight flex items-center gap-2">
-                  <span>Executive Analytics & BI</span>
-                  <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    Owner Hub
-                  </span>
-                </h1>
-                <p className="text-[11px] text-amber-400 font-medium">
-                  Konsolidasi Multi-Cabang, Analisis Jam Sibuk & Performa Kapster
-                </p>
-              </div>
+      {/* 2. Operational Sub-Header (Executive Analytics & BI Context) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight">
+                Executive Analytics & BI
+              </h1>
+              <p className="text-xs text-slate-400">
+                Konsolidasi Multi-Cabang, Analisis Jam Sibuk & Performa Kapster
+              </p>
             </div>
           </div>
 
-          {/* Quick Navigation Links */}
-          <div className="flex items-center gap-2">
-            <Link
-              href="/queue"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Scissors className="w-3.5 h-3.5 text-amber-400" />
-              <span>Antrean</span>
-            </Link>
-
-            <Link
-              href="/history"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <History className="w-3.5 h-3.5 text-amber-400" />
-              <span>Riwayat</span>
-            </Link>
-
-            <Link
-              href="/inventory"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Package className="w-3.5 h-3.5 text-amber-400" />
-              <span>Inventori</span>
-            </Link>
-
-            <Link
-              href="/commissions"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              <span>Komisi</span>
-            </Link>
-
-            <Link
-              href="/accounting"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Keuangan</span>
-            </Link>
-
-            <Link
-              href="/customers"
-              className="hidden lg:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            >
-              <Users className="w-3.5 h-3.5 text-sky-400" />
-              <span>Pelanggan</span>
-            </Link>
-          </div>
+          <button
+            onClick={loadAnalyticsData}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px] self-start sm:self-auto"
+            title="Muat ulang analitik"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
+            <span className="hidden sm:inline">Segarkan</span>
+          </button>
         </div>
-      </header>
+      </section>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">

@@ -1,37 +1,30 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   QueueItemView,
   AppointmentView,
   CatalogItem,
 } from '../../types/pos';
+import { PosHeader } from '../../components/pos/pos-header';
 import { QueueBoard } from '../../components/queue/queue-board';
 import { AppointmentCalendar } from '../../components/queue/appointment-calendar';
 import { WalkinModal } from '../../components/queue/walkin-modal';
 import { AppointmentModal } from '../../components/queue/appointment-modal';
 import {
-  ArrowLeft,
   Calendar,
   Users,
   Scissors,
   RefreshCw,
   Clock,
-  History,
-  Package,
   AlertCircle,
   CheckCircle2,
   X,
-  Store,
-  Coins,
-  BarChart3,
-  TrendingUp,
 } from 'lucide-react';
 
 function QueueManagementContent(): React.JSX.Element {
-  const { supabase, currentOutlet, availableOutlets, setCurrentOutlet, isCashier } = usePos();
+  const { supabase, currentOutlet } = usePos();
 
   const [activeTab, setActiveTab] = useState<'BOARD' | 'APPOINTMENTS' | 'HISTORY'>('BOARD');
 
@@ -430,78 +423,33 @@ function QueueManagementContent(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Top Header */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-4 py-3 sticky top-0 z-30 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Brand & Outlet */}
+      {/* 1. Global Application Header */}
+      <PosHeader variant="app" />
+
+      {/* 2. Operational Sub-Header (Antrean & Janji Temu Context + Primary Actions) */}
+      <section className="bg-slate-900/60 border-b border-slate-800 px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-              title="Kembali ke Kasir POS"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
-                💈
-              </span>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white leading-tight flex items-center gap-2">
-                  <span>Antrean & Janji Temu</span>
-                  <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    Real-time
-                  </span>
-                </h1>
-                <p className="text-[11px] text-amber-400 font-medium">
-                  Sistem Antrean Kursi Pangkas & Kalender Reservasi
-                </p>
-              </div>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Scissors className="w-4 h-4" />
             </div>
-
-            <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block" />
-
-            {/* Outlet Selector / Locked Badge for Cashier */}
-            {isCashier ? (
-              <div
-                className="flex items-center gap-1.5 bg-slate-800/90 border border-amber-500/40 px-2.5 py-1.5 rounded-lg text-xs"
-                title="Cabang terkunci khusus penugasan akun kasir ini"
-              >
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-semibold text-white truncate max-w-[140px]">
-                  {currentOutlet?.name || 'Cabang Kasir'}
+            <div>
+              <h1 className="text-base font-bold text-white leading-tight flex items-center gap-2">
+                <span>Antrean & Janji Temu</span>
+                <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  Real-time
                 </span>
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-bold ml-1">
-                  Terkunci
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs">
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <select
-                  value={currentOutlet?.id || ''}
-                  onChange={(e) => {
-                    const target = availableOutlets.find((o) => o.id === e.target.value);
-                    if (target) setCurrentOutlet(target);
-                  }}
-                  className="bg-transparent text-slate-100 font-medium focus:outline-none cursor-pointer pr-1"
-                >
-                  {availableOutlets.map((outlet) => (
-                    <option key={outlet.id} value={outlet.id} className="bg-slate-900 text-white">
-                      {outlet.name} ({outlet.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+              </h1>
+              <p className="text-xs text-slate-400">
+                Sistem antrean kursi pangkas dan kalender reservasi pelanggan.
+              </p>
+            </div>
           </div>
 
-          {/* Quick Actions & Navigation Links */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 self-start sm:self-auto">
             <button
               onClick={() => setIsWalkinModalOpen(true)}
-              className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+              className="px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl transition-colors shadow-xs shadow-amber-500/20 flex items-center gap-1.5 min-h-[40px]"
             >
               <Users className="w-3.5 h-3.5" />
               <span>+ Antrean Walk-in</span>
@@ -512,7 +460,7 @@ function QueueManagementContent(): React.JSX.Element {
                 setBookingPrefilledBarber(undefined);
                 setIsAppointmentModalOpen(true);
               }}
-              className="px-3 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
+              className="px-3.5 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700/80 rounded-xl transition-colors flex items-center gap-1.5 min-h-[40px]"
             >
               <Calendar className="w-3.5 h-3.5 text-amber-400" />
               <span>+ Reservasi</span>
@@ -521,75 +469,14 @@ function QueueManagementContent(): React.JSX.Element {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
-              title="Muat ulang data"
+              className="p-2.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700/80 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+              title="Muat ulang data antrean"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
-
-            <div className="h-5 w-px bg-slate-700 mx-0.5 hidden sm:block" />
-
-            <Link
-              href="/history"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Riwayat Nota Penjualan"
-            >
-              <History className="w-3.5 h-3.5 text-amber-400" />
-              <span>Riwayat</span>
-            </Link>
-
-            <Link
-              href="/inventory"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Manajemen Inventori"
-            >
-              <Package className="w-3.5 h-3.5 text-amber-400" />
-              <span>Inventori</span>
-            </Link>
-
-            <Link
-              href="/commissions"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Komisi Kapster & Rekapitulasi"
-            >
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              <span>Komisi</span>
-            </Link>
-
-            <Link
-              href="/customers"
-              className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="CRM, Member & Program Loyalitas"
-            >
-              <Users className="w-3.5 h-3.5 text-sky-400" />
-              <span>Pelanggan</span>
-            </Link>
-
-            {/* OWNER ONLY */}
-            {!isCashier && (
-              <>
-                <Link
-                  href="/accounting"
-                  className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-                  title="Laporan Keuangan & Akuntansi"
-                >
-                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Keuangan</span>
-                </Link>
-
-                <Link
-                  href="/analytics"
-                  className="hidden md:flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-                  title="Analitik Bisnis & Dashboard Owner"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Analitik</span>
-                </Link>
-              </>
-            )}
           </div>
         </div>
-      </header>
+      </section>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
