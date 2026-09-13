@@ -52,6 +52,17 @@ export function ProductCategoryModal({
     setFormError(null);
   }, [category, isOpen]);
 
+  // Keyboard Escape listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,7 +116,7 @@ export function ProductCategoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
@@ -118,13 +129,15 @@ export function ProductCategoryModal({
                 {isEditing ? 'Ubah Kategori Produk' : 'Tambah Kategori Produk'}
               </h2>
               <p className="text-xs text-slate-400">
-                Pengelompokan pomade, hair tonic, shampoo, & merchandise
+                Tambahkan atau ubah kelompok produk retail untuk etalase kasir dan inventaris.
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isSubmitting}
+            aria-label="Tutup modal"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
@@ -132,7 +145,7 @@ export function ProductCategoryModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 text-xs">
           {formError && (
             <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
@@ -140,59 +153,76 @@ export function ProductCategoryModal({
             </div>
           )}
 
-          {/* Name */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">
-              Nama Kategori <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Pomade & Styling, Hair Care, Shaving Tools"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-            />
-          </div>
+          {/* Section 1: Identitas Kategori */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              1. Identitas Kategori
+            </span>
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Deskripsi</label>
-            <textarea
-              rows={2}
-              placeholder="Keterangan kategori produk..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs resize-none"
-            />
-          </div>
-
-          {/* Sort Order */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Urutan Tampilan (Sort Order)</label>
-            <input
-              type="number"
-              min={0}
-              value={sortOrder}
-              onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
-            />
-            <p className="text-[10px] text-slate-500">Angka lebih kecil tampil lebih awal di etalase POS.</p>
-          </div>
-
-          {/* Active Status Toggle */}
-          <div className="pt-1">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            {/* Name */}
+            <div className="space-y-1.5">
+              <label className="block text-slate-300 font-semibold">
+                Nama Kategori <span className="text-red-400">*</span>
+              </label>
               <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
+                type="text"
+                required
+                placeholder="Contoh: Pomade & Styling, Hair Care, Shaving Tools"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
               />
-              <span className="text-slate-300 font-medium">
-                Kategori Aktif (Dapat dipilih di katalog produk)
-              </span>
-            </label>
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <label className="block text-slate-300 font-semibold">Deskripsi</label>
+              <textarea
+                rows={2}
+                placeholder="Keterangan kelompok produk retail..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-slate-800/80" />
+
+          {/* Section 2: Pengaturan Etalase */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              2. Pengaturan Etalase
+            </span>
+
+            {/* Sort Order */}
+            <div className="space-y-1.5">
+              <label className="block text-slate-300 font-semibold">Urutan Tampilan (Sort Order)</label>
+              <input
+                type="number"
+                min={0}
+                value={sortOrder}
+                onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+              <p className="text-[10px] text-slate-500">Angka lebih kecil tampil lebih awal di etalase kasir POS.</p>
+            </div>
+
+            {/* Active Status Toggle */}
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-950 accent-amber-500 cursor-pointer"
+                />
+                <span className="text-slate-300 font-medium">
+                  Kategori Aktif (Dapat dipilih di katalog produk)
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Action Buttons */}
@@ -201,14 +231,14 @@ export function ProductCategoryModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold border border-slate-700/80"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-500/20 transition disabled:opacity-50 text-xs"
+              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-xs shadow-amber-500/20 transition disabled:opacity-40 text-xs"
             >
               {isSubmitting ? (
                 <>
