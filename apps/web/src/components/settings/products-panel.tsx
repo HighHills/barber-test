@@ -208,6 +208,17 @@ export function ProductsPanel({ onNotification }: ProductsPanelProps): React.JSX
     [products]
   );
 
+  // Active system outlets (exclude inactive system outlets from coverage denominator)
+  const activeSystemOutlets = useMemo(
+    () => outlets.filter((o) => o.is_active !== false),
+    [outlets]
+  );
+  const activeSystemOutletIds = useMemo(
+    () => new Set(activeSystemOutlets.map((o) => o.id)),
+    [activeSystemOutlets]
+  );
+  const activeSystemOutletCount = activeSystemOutlets.length;
+
   // Direct Activation via RPC save_product
   const handleActivate = async (product: ProductItem) => {
     setTogglingId(product.id);
@@ -491,13 +502,14 @@ export function ProductsPanel({ onNotification }: ProductsPanelProps): React.JSX
               const currentOutletPricing = p.product_outlets?.find(
                 (po) => po.outlet_id === currentOutlet?.id
               );
-              const activeOutletsCount =
-                p.product_outlets?.filter((po) => po.is_active).length || 0;
-              const totalOutletsCount = outlets.length;
+              const activeProductOutletCount =
+                p.product_outlets?.filter(
+                  (po) => po.is_active && activeSystemOutletIds.has(po.outlet_id)
+                ).length || 0;
 
               // Price range calculation across active outlets
               const activePrices = (p.product_outlets || [])
-                .filter((po) => po.is_active)
+                .filter((po) => po.is_active && activeSystemOutletIds.has(po.outlet_id))
                 .map((po) => po.selling_price);
               const minPrice = activePrices.length > 0 ? Math.min(...activePrices) : null;
               const maxPrice = activePrices.length > 0 ? Math.max(...activePrices) : null;
@@ -620,7 +632,7 @@ export function ProductsPanel({ onNotification }: ProductsPanelProps): React.JSX
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400">
                           <Store className="w-3.5 h-3.5 text-slate-500" />
                           <span>
-                            {activeOutletsCount}/{totalOutletsCount} cabang aktif
+                            {activeProductOutletCount}/{activeSystemOutletCount} cabang
                           </span>
                         </span>
                       </div>

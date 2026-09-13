@@ -80,6 +80,13 @@ export function ProductConversionModal({
     }
   }, [product, supabase]);
 
+  // Initial load when modal opens and product is available
+  useEffect(() => {
+    if (isOpen && product) {
+      loadData();
+    }
+  }, [isOpen, product, loadData]);
+
   // Keyboard Escape listener
   useEffect(() => {
     if (!isOpen) return;
