@@ -37,6 +37,21 @@ export interface PosHeaderProps {
   onBeforeNavigate?: (href: string) => boolean | Promise<boolean>;
 }
 
+interface NavItemConfig {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  visible: boolean;
+  external?: boolean;
+  badge?: string;
+}
+
+interface NavGroupConfig {
+  name: string;
+  items: NavItemConfig[];
+}
+
 export function PosHeader({
   variant,
   onOpenSessionClick,
@@ -60,12 +75,11 @@ export function PosHeader({
   } = usePos();
 
   const router = useRouter();
+  const pathname = usePathname();
 
   const canAccessSettings = roleCode === 'OWNER' || roleCode === 'ADMIN';
-
   const isPos = variant ? variant === 'pos' : Boolean(onOpenSessionClick || onCloseSessionClick);
 
-  const pathname = usePathname();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
@@ -80,6 +94,24 @@ export function PosHeader({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mobileNavOpen]);
+
+  // Live operational clock
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        })
+      );
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleOutletSelect = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectElement = e.target;
@@ -130,365 +162,387 @@ export function PosHeader({
     router.push(href);
   };
 
-  const getNavLinkClass = (href: string, extraStyle?: string) => {
-    const isActive = pathname === href;
-    if (isActive) {
-      return `flex items-center gap-1.5 text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1.5 rounded-lg border border-amber-500/50 font-semibold transition-colors shadow-xs ${
-        extraStyle || ''
-      }`;
-    }
-    return `flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors ${
-      extraStyle || ''
-    }`;
-  };
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString('id-ID', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        })
-      );
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refreshData();
     setIsRefreshing(false);
   };
 
-  const navItems = [
+  // Structured navigation groups
+  const navGroups: NavGroupConfig[] = [
     {
-      href: '/queue',
-      label: 'Antrean',
-      icon: Scissors,
-      title: 'Sistem Antrean Kursi & Janji Temu',
-      visible: true,
-      group: 'POS' as const,
+      name: 'POS',
+      items: [
+        {
+          href: '/queue',
+          label: 'Antrean',
+          icon: Scissors,
+          title: 'Sistem Antrean Kursi & Janji Temu',
+          visible: true,
+        },
+        {
+          href: '/book',
+          label: 'Portal Booking',
+          icon: Calendar,
+          title: 'Buka Portal Reservasi Mandiri Pelanggan (Tab Baru)',
+          visible: true,
+          external: true,
+          badge: 'Tab Baru',
+        },
+        {
+          href: '/history',
+          label: 'Riwayat Nota',
+          icon: History,
+          title: 'Riwayat Transaksi Penjualan',
+          visible: true,
+        },
+      ],
     },
     {
-      href: '/book',
-      label: 'Portal Booking',
-      icon: Calendar,
-      title: 'Buka Portal Reservasi Mandiri Pelanggan (Tab Baru)',
-      visible: true,
-      external: true,
-      badge: 'Tab Baru',
-      group: 'POS' as const,
+      name: 'Operasional',
+      items: [
+        {
+          href: '/inventory',
+          label: 'Inventori',
+          icon: Package,
+          title: 'Manajemen Persediaan & Stok Cabang',
+          visible: true,
+        },
+        {
+          href: '/purchases',
+          label: 'Pembelian',
+          icon: Truck,
+          title: 'Manajemen Pembelian Stok & Hutang Supplier',
+          visible: !isCashier,
+        },
+        {
+          href: '/expenses',
+          label: 'Biaya',
+          icon: Receipt,
+          title: 'Biaya Operasional & Kas Kecil (Petty Cash)',
+          visible: true,
+        },
+        {
+          href: '/commissions',
+          label: 'Komisi',
+          icon: Coins,
+          title: 'Komisi & Performa Kapster Cabang',
+          visible: true,
+        },
+        {
+          href: '/customers',
+          label: 'Pelanggan',
+          icon: Users,
+          title: 'CRM Pelanggan & Loyalitas',
+          visible: true,
+        },
+      ],
     },
     {
-      href: '/history',
-      label: 'Riwayat Nota',
-      icon: History,
-      title: 'Riwayat Transaksi Penjualan',
-      visible: true,
-      group: 'POS' as const,
-    },
-    {
-      href: '/inventory',
-      label: 'Inventori',
-      icon: Package,
-      title: 'Manajemen Persediaan & Stok Cabang',
-      visible: true,
-      group: 'OPERASIONAL' as const,
-    },
-    {
-      href: '/purchases',
-      label: 'Pembelian',
-      icon: Truck,
-      title: 'Manajemen Pembelian Stok & Hutang Supplier',
-      visible: !isCashier,
-      group: 'OPERASIONAL' as const,
-    },
-    {
-      href: '/expenses',
-      label: 'Biaya',
-      icon: Receipt,
-      title: 'Biaya Operasional & Kas Kecil (Petty Cash)',
-      visible: true,
-      group: 'OPERASIONAL' as const,
-    },
-    {
-      href: '/commissions',
-      label: 'Komisi',
-      icon: Coins,
-      title: 'Komisi & Performa Kapster Cabang',
-      visible: true,
-      group: 'OPERASIONAL' as const,
-    },
-    {
-      href: '/customers',
-      label: 'Pelanggan',
-      icon: Users,
-      title: 'CRM Pelanggan & Loyalitas',
-      visible: true,
-      group: 'OPERASIONAL' as const,
-    },
-    {
-      href: '/accounting',
-      label: 'Keuangan',
-      icon: BarChart3,
-      title: 'Laporan Keuangan & Akuntansi (Khusus Owner)',
-      visible: !isCashier,
-      group: 'MANAJEMEN' as const,
-    },
-    {
-      href: '/analytics',
-      label: 'Analitik',
-      icon: TrendingUp,
-      title: 'Analitik Bisnis & Dashboard Owner (Khusus Owner)',
-      visible: !isCashier,
-      group: 'MANAJEMEN' as const,
-    },
-    {
-      href: '/subaccounts',
-      label: 'Sub-Akun',
-      icon: Users,
-      title: 'Kelola & Buat Sub-Akun Kasir Cabang (Khusus Owner)',
-      visible: isOwner,
-      group: 'MANAJEMEN' as const,
-    },
-    {
-      href: '/settings',
-      label: 'Settings',
-      icon: Settings,
-      title: 'Pengaturan Bisnis & Sistem (Khusus Owner / Admin)',
-      visible: canAccessSettings,
-      group: 'MANAJEMEN' as const,
+      name: 'Manajemen',
+      items: [
+        {
+          href: '/accounting',
+          label: 'Keuangan',
+          icon: BarChart3,
+          title: 'Laporan Keuangan & Akuntansi (Khusus Owner)',
+          visible: !isCashier,
+        },
+        {
+          href: '/analytics',
+          label: 'Analitik',
+          icon: TrendingUp,
+          title: 'Analitik Bisnis & Dashboard Owner (Khusus Owner)',
+          visible: !isCashier,
+        },
+        {
+          href: '/subaccounts',
+          label: 'Sub-Akun',
+          icon: Users,
+          title: 'Kelola & Buat Sub-Akun Kasir Cabang (Khusus Owner)',
+          visible: isOwner,
+        },
+        {
+          href: '/settings',
+          label: 'Settings',
+          icon: Settings,
+          title: 'Pengaturan Bisnis & Sistem (Khusus Owner / Admin)',
+          visible: canAccessSettings,
+        },
+      ],
     },
   ];
 
   return (
-    <header className="bg-slate-900 text-white border-b border-slate-800 px-4 py-3 sticky top-0 z-30 shadow-md">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Left Section: Logo & Outlet Selector */}
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            onClick={(e) => handleNavClick(e, '/')}
-            className="flex items-center gap-2 group cursor-pointer"
-            title="Ke Layar Kasir POS"
-          >
-            <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm group-hover:bg-amber-400 transition-colors">
-              💈
-            </span>
-            <div className="hidden sm:block">
-              <h1 className="text-base font-bold tracking-tight text-white leading-tight">
-                Barbershop POS
-              </h1>
-              <p className="text-[11px] text-amber-400 font-medium">Sistem Kasir Terintegrasi</p>
-            </div>
-          </Link>
-
-          {pathname !== '/' && (
+    <header className="sticky top-0 z-30 shadow-md">
+      {/* ========================================================================= */}
+      {/* TIER 1: Global Application Shell (Brand, Context, State & Utilities)      */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900 text-white border-b border-slate-800 px-3 sm:px-4 py-2 sm:py-2.5">
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
+          {/* Left Area: Brand Lockup & Operating Outlet */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Brand Logo & Name */}
             <Link
               href="/"
               onClick={(e) => handleNavClick(e, '/')}
-              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-              title="Kembali ke Layar Kasir POS"
+              className="flex items-center gap-2.5 group cursor-pointer shrink-0"
+              title="Ke Layar Kasir POS"
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden md:inline font-medium">Kasir POS</span>
+              <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 shadow-xs group-hover:bg-amber-400 transition-colors shrink-0">
+                <Scissors className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+              </div>
+              <div className="hidden sm:block text-left">
+                <h1 className="text-sm font-bold tracking-tight text-white leading-tight">
+                  Barbershop POS
+                </h1>
+                <p className="text-[10px] text-amber-400 font-semibold tracking-wide uppercase leading-tight">
+                  Operating System
+                </p>
+              </div>
             </Link>
-          )}
 
-          <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block" />
-
-          {/* Outlet Selector / Locked Badge for Cashier */}
-          {isCashier ? (
-            <div
-              className="flex items-center gap-1.5 bg-slate-800/90 border border-amber-500/40 px-2.5 py-1.5 rounded-lg text-xs"
-              title="Cabang terkunci khusus penugasan akun kasir ini"
-            >
-              <Store className="w-3.5 h-3.5 text-amber-400" />
-              <span className="font-semibold text-white truncate max-w-[140px]">
-                {currentOutlet?.name || 'Cabang Kasir'}
-              </span>
-              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-bold ml-1">
-                Terkunci
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs">
-              <Store className="w-3.5 h-3.5 text-amber-400" />
-              <select
-                value={currentOutlet?.id || ''}
-                onChange={handleOutletSelect}
-                aria-label="Pilih cabang operasional"
-                className="bg-transparent text-slate-100 font-medium focus:outline-none cursor-pointer pr-1"
+            {/* Quick Return to POS (when outside root) */}
+            {pathname !== '/' && (
+              <Link
+                href="/"
+                onClick={(e) => handleNavClick(e, '/')}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 px-2.5 py-1.5 rounded-lg border border-slate-700/80 transition-colors shrink-0"
+                title="Kembali ke Layar Kasir POS"
               >
-                {availableOutlets.map((outlet) => (
-                  <option key={outlet.id} value={outlet.id} className="bg-slate-900 text-white">
-                    {outlet.name} ({outlet.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+                <ArrowLeft className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="hidden md:inline">Kasir POS</span>
+              </Link>
+            )}
 
-        {/* Center Section: Cash Session Status & Simulation Mode (POS Only) */}
-        {isPos && (
-          <div className="flex items-center gap-2">
+            <div className="h-5 w-px bg-slate-800 hidden sm:block shrink-0" aria-hidden="true" />
+
+            {/* Operating Outlet Selector / Cashier Locked Badge */}
+            {isCashier ? (
+              <div
+                className="flex items-center gap-1.5 bg-slate-800/80 border border-amber-500/30 px-2.5 py-1.5 rounded-lg text-xs shrink-0"
+                title="Cabang terkunci khusus penugasan akun kasir ini"
+              >
+                <Store className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="font-semibold text-white truncate max-w-[110px] sm:max-w-[140px]">
+                  {currentOutlet?.name || 'Cabang Kasir'}
+                </span>
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300 font-bold ml-0.5 uppercase tracking-wide">
+                  Terkunci
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/80 hover:border-slate-600 px-2.5 py-1.5 rounded-lg text-xs transition-colors shrink-0">
+                <Store className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <select
+                  value={currentOutlet?.id || ''}
+                  onChange={handleOutletSelect}
+                  aria-label="Pilih cabang operasional"
+                  className="bg-transparent text-slate-100 font-medium focus:outline-none cursor-pointer pr-1 text-xs"
+                >
+                  {availableOutlets.map((outlet) => (
+                    <option key={outlet.id} value={outlet.id} className="bg-slate-900 text-white">
+                      {outlet.name} ({outlet.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Center Area: Cash Session Status & Simulation Pill (Desktop / Tablet) */}
+          <div className="hidden lg:flex items-center gap-2">
             {simulatedRole && (
-              <div className="flex items-center gap-1.5 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm animate-pulse">
+              <div className="flex items-center gap-1.5 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-lg text-xs font-bold shadow-xs animate-pulse shrink-0">
                 <PlayCircle className="w-3.5 h-3.5" />
                 <span>Simulasi Kasir ({currentOutlet?.code})</span>
                 <button
                   onClick={() => simulateRole(null)}
-                  className="ml-1 rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 hover:bg-slate-900 transition"
+                  className="ml-1 rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 hover:bg-slate-900 transition cursor-pointer"
                   title="Keluar dari mode simulasi kasir"
                 >
-                  Kembali
+                  Keluar
                 </button>
               </div>
             )}
 
-            {activeSession ? (
-              <div className="flex items-center gap-2 bg-emerald-950/70 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-xs text-emerald-300">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="font-semibold">Laci Kasir BUKA</span>
-                {onCloseSessionClick && (
-                  <button
-                    onClick={onCloseSessionClick}
-                    className="ml-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600 transition-colors flex items-center gap-1"
-                    title="Tutup sesi kasir shift ini"
-                  >
-                    <Lock className="w-3 h-3 text-amber-400" />
-                    <span>Tutup Kasir</span>
-                  </button>
-                )}
-              </div>
-            ) : (
-              onOpenSessionClick && (
-                <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs text-amber-300">
-                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                  <span className="font-semibold">Laci Kasir TUTUP</span>
-                  <button
-                    onClick={onOpenSessionClick}
-                    className="ml-1 text-[11px] bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-2 py-0.5 rounded shadow-sm transition-colors flex items-center gap-1"
-                    title="Buka sesi kasir dengan modal awal"
-                  >
-                    <Unlock className="w-3 h-3" />
-                    <span>Buka Kasir</span>
-                  </button>
+            {isPos && (
+              activeSession ? (
+                <div className="flex items-center gap-2 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-lg text-xs text-emerald-300 shrink-0">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="font-semibold text-emerald-200">Laci Kasir BUKA</span>
+                  {onCloseSessionClick && (
+                    <button
+                      onClick={onCloseSessionClick}
+                      className="ml-1 text-[11px] bg-slate-800/90 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600/80 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                      title="Tutup sesi kasir shift ini"
+                    >
+                      <Lock className="w-3 h-3 text-amber-400" />
+                      <span>Tutup Kasir</span>
+                    </button>
+                  )}
                 </div>
+              ) : (
+                onOpenSessionClick && (
+                  <div className="flex items-center gap-2 bg-amber-950/50 border border-amber-500/30 px-2.5 py-1 rounded-lg text-xs text-amber-300 shrink-0">
+                    <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0"></span>
+                    <span className="font-semibold text-amber-200">Laci Kasir TUTUP</span>
+                    <button
+                      onClick={onOpenSessionClick}
+                      className="ml-1 text-[11px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Buka sesi kasir dengan modal awal"
+                    >
+                      <Unlock className="w-3 h-3 text-slate-950" />
+                      <span>Buka Kasir</span>
+                    </button>
+                  </div>
+                )
               )
             )}
           </div>
-        )}
 
-        {/* Right Section: Time, Cashier Profile, Nav Links & Sign Out */}
-        <div className="flex items-center gap-2">
-          {/* Clock */}
-          <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800/60 px-2.5 py-1.5 rounded-lg border border-slate-700/60">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-mono font-medium">{currentTime || '00:00:00'}</span>
-          </div>
-
-          {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1.5" aria-label="Navigasi Utama Aplikasi">
-            {navItems
-              .filter((item) => item.visible)
-              .map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-
-                if (item.external) {
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 px-2.5 py-1.5 rounded-lg border border-amber-500/30 transition-colors"
-                      title={item.title}
-                    >
-                      <Icon className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="hidden xl:inline font-medium">{item.label}</span>
-                    </Link>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={(e) => handleNavClick(e, item.href)}
-                    className={getNavLinkClass(item.href)}
-                    title={item.title}
-                  >
-                    <Icon
-                      className={`w-3.5 h-3.5 ${
-                        isActive ? 'text-amber-300' : 'text-amber-400'
-                      }`}
-                    />
-                    <span className="hidden sm:inline font-medium">{item.label}</span>
-                  </Link>
-                );
-              })}
-          </nav>
-
-          {/* Mobile Main Navigation Button (< md) */}
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            className="md:hidden flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
-            aria-label="Buka menu navigasi aplikasi"
-            aria-expanded={mobileNavOpen}
-          >
-            <Menu className="w-4 h-4 text-amber-400" />
-            <span className="font-semibold text-xs">Menu</span>
-          </button>
-
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-1.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
-            title="Muat Ulang Data POS"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-
-          {/* Cashier Badge */}
-          <div className="flex items-center gap-2 pl-1">
-            <div className="w-7 h-7 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-xs font-bold text-amber-400">
-              {profile?.display_name?.slice(0, 2).toUpperCase() || 'KS'}
+          {/* Right Area: Time, Utilities, Account Profile & Mobile Toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Operational Clock */}
+            <div className="hidden xl:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1.5 rounded-lg border border-slate-700/50 shrink-0">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-mono font-medium">{currentTime || '00:00:00'}</span>
             </div>
-            <div className="hidden xl:block text-left text-xs leading-tight">
-              <div className="font-semibold text-slate-100 truncate max-w-[110px]">
-                {profile?.display_name || 'Kasir'}
+
+            {/* Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="p-1.5 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+              title="Muat Ulang Data POS"
+              aria-label="Muat ulang data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Cashier / Account Profile Chip */}
+            <div className="flex items-center gap-2 pl-0.5 shrink-0">
+              <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-amber-400 shrink-0 shadow-xs">
+                {profile?.display_name?.slice(0, 2).toUpperCase() || 'KS'}
               </div>
-              <div className="text-[10px] text-amber-400 font-semibold">
-                {isCashier ? 'Kasir Cabang' : 'Owner / Admin'}
+              <div className="hidden sm:block text-left text-xs leading-tight">
+                <div className="font-semibold text-slate-100 truncate max-w-[100px] lg:max-w-[120px]">
+                  {profile?.display_name || 'Kasir'}
+                </div>
+                <div className="text-[10px] text-amber-400/90 font-medium">
+                  {isCashier ? 'Kasir Cabang' : 'Owner / Admin'}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Logout */}
-          <button
-            onClick={signOut}
-            className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800/60 hover:bg-slate-800 rounded-lg border border-slate-700/60 transition-colors"
-            title="Keluar / Ganti Akun"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
+            {/* Sign Out Button */}
+            <button
+              onClick={signOut}
+              className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800/60 hover:bg-slate-800 rounded-lg border border-slate-700/60 transition-colors shrink-0 cursor-pointer"
+              title="Keluar / Ganti Akun"
+              aria-label="Keluar akun"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Mobile Navigation Trigger Button (< md) */}
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="md:hidden flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors shrink-0 cursor-pointer"
+              aria-label="Buka menu navigasi aplikasi"
+              aria-expanded={mobileNavOpen}
+            >
+              <Menu className="w-4 h-4 text-amber-400" />
+              <span className="font-semibold text-xs">Menu</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Mobile Application Navigation Drawer (< md) */}
+      {/* ========================================================================= */}
+      {/* TIER 2: Primary Navigation Strip (Desktop: md and up)                     */}
+      {/* ========================================================================= */}
+      <nav
+        className="hidden md:flex items-center bg-slate-950/70 border-b border-slate-800/80 px-4 py-1.5 backdrop-blur-xs overflow-x-auto scrollbar-none"
+        aria-label="Navigasi Utama Aplikasi"
+      >
+        <div className="flex items-center gap-1.5 w-full">
+          {navGroups.map((group, groupIdx) => {
+            const visibleItems = group.items.filter((item) => item.visible);
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <React.Fragment key={group.name}>
+                {groupIdx > 0 && (
+                  <div
+                    className="h-4 w-px bg-slate-800 mx-1.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {visibleItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive =
+                      item.href === '/'
+                        ? pathname === '/'
+                        : pathname.startsWith(item.href);
+
+                    if (item.external) {
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1 rounded-md transition-colors"
+                          title={item.title}
+                        >
+                          <Icon className="w-3.5 h-3.5 text-amber-400/80" />
+                          <span className="font-medium">{item.label}</span>
+                          {item.badge && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30">
+                              {item.badge}
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={(e) => handleNavClick(e, item.href)}
+                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-all ${
+                          isActive
+                            ? 'text-amber-300 font-semibold bg-amber-500/15 border border-amber-500/30 shadow-xs'
+                            : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 font-medium'
+                        }`}
+                        title={item.title}
+                      >
+                        <Icon
+                          className={`w-3.5 h-3.5 transition-colors ${
+                            isActive ? 'text-amber-400' : 'text-slate-400'
+                          }`}
+                        />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* ========================================================================= */}
+      {/* MOBILE APPLICATION NAVIGATION DRAWER (< md)                               */}
+      {/* ========================================================================= */}
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex justify-end animate-in fade-in duration-150">
           {/* Backdrop */}
@@ -508,9 +562,9 @@ export function PosHeader({
             {/* Drawer Header */}
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <span className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-sm">
-                  💈
-                </span>
+                <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 shadow-xs shrink-0">
+                  <Scissors className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+                </div>
                 <div>
                   <h2 className="text-sm font-bold text-white leading-tight">Barbershop OS</h2>
                   <p className="text-[10px] text-amber-400 font-medium">Menu Navigasi Aplikasi</p>
@@ -542,7 +596,71 @@ export function PosHeader({
               </span>
             </div>
 
-            {/* Navigation Groups */}
+            {/* Simulation Banner in Mobile Drawer */}
+            {simulatedRole && (
+              <div className="mt-2 py-1.5 px-2.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  <span>Simulasi Kasir ({currentOutlet?.code})</span>
+                </div>
+                <button
+                  onClick={() => simulateRole(null)}
+                  className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400"
+                >
+                  Keluar
+                </button>
+              </div>
+            )}
+
+            {/* Session State in Mobile Drawer */}
+            {isPos && (
+              <div className="mt-2">
+                {activeSession ? (
+                  <div className="flex items-center justify-between bg-emerald-950/60 border border-emerald-500/30 px-3 py-2 rounded-xl text-xs text-emerald-300">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span className="font-semibold text-emerald-200">Laci BUKA</span>
+                    </div>
+                    {onCloseSessionClick && (
+                      <button
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          onCloseSessionClick();
+                        }}
+                        className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600 transition-colors flex items-center gap-1"
+                      >
+                        <Lock className="w-3 h-3 text-amber-400" />
+                        <span>Tutup Kasir</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  onOpenSessionClick && (
+                    <div className="flex items-center justify-between bg-amber-950/50 border border-amber-500/30 px-3 py-2 rounded-xl text-xs text-amber-300">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                        <span className="font-semibold text-amber-200">Laci TUTUP</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          onOpenSessionClick();
+                        }}
+                        className="text-[11px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded shadow-xs transition-colors flex items-center gap-1"
+                      >
+                        <Unlock className="w-3 h-3" />
+                        <span>Buka Kasir</span>
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            {/* Navigation Groups in Mobile Drawer */}
             <div className="flex-1 mt-4 space-y-4 overflow-y-auto pr-0.5">
               {/* Group 1: Kasir & Layanan */}
               <div className="space-y-1">
@@ -567,7 +685,7 @@ export function PosHeader({
                     href="/queue"
                     onClick={(e) => handleNavClick(e, '/queue')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/queue'
+                      pathname.startsWith('/queue')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
@@ -596,7 +714,7 @@ export function PosHeader({
                     href="/history"
                     onClick={(e) => handleNavClick(e, '/history')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/history'
+                      pathname.startsWith('/history')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
@@ -607,7 +725,7 @@ export function PosHeader({
                 </div>
               </div>
 
-              {/* Group 2: Operasional & Keuangan Cabang */}
+              {/* Group 2: Operasional & CRM */}
               <div className="space-y-1">
                 <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase px-2 py-0.5">
                   Operasional & CRM
@@ -617,7 +735,7 @@ export function PosHeader({
                     href="/inventory"
                     onClick={(e) => handleNavClick(e, '/inventory')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/inventory'
+                      pathname.startsWith('/inventory')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
@@ -631,12 +749,12 @@ export function PosHeader({
                       href="/purchases"
                       onClick={(e) => handleNavClick(e, '/purchases')}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                        pathname === '/purchases'
+                        pathname.startsWith('/purchases')
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
                     >
-                      <Truck className="w-4 h-4 text-blue-400 shrink-0" />
+                      <Truck className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>Pembelian Stok</span>
                     </Link>
                   )}
@@ -645,7 +763,7 @@ export function PosHeader({
                     href="/expenses"
                     onClick={(e) => handleNavClick(e, '/expenses')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/expenses'
+                      pathname.startsWith('/expenses')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
@@ -658,7 +776,7 @@ export function PosHeader({
                     href="/commissions"
                     onClick={(e) => handleNavClick(e, '/commissions')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/commissions'
+                      pathname.startsWith('/commissions')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
@@ -671,12 +789,12 @@ export function PosHeader({
                     href="/customers"
                     onClick={(e) => handleNavClick(e, '/customers')}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                      pathname === '/customers'
+                      pathname.startsWith('/customers')
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                     }`}
                   >
-                    <Users className="w-4 h-4 text-purple-400 shrink-0" />
+                    <Users className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>CRM Pelanggan</span>
                   </Link>
                 </div>
@@ -693,12 +811,12 @@ export function PosHeader({
                       href="/accounting"
                       onClick={(e) => handleNavClick(e, '/accounting')}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                        pathname === '/accounting'
+                        pathname.startsWith('/accounting')
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
                     >
-                      <BarChart3 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <BarChart3 className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>Laporan Keuangan</span>
                     </Link>
                   )}
@@ -708,7 +826,7 @@ export function PosHeader({
                       href="/analytics"
                       onClick={(e) => handleNavClick(e, '/analytics')}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                        pathname === '/analytics'
+                        pathname.startsWith('/analytics')
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
@@ -723,7 +841,7 @@ export function PosHeader({
                       href="/subaccounts"
                       onClick={(e) => handleNavClick(e, '/subaccounts')}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                        pathname === '/subaccounts'
+                        pathname.startsWith('/subaccounts')
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
@@ -738,7 +856,7 @@ export function PosHeader({
                       href="/settings"
                       onClick={(e) => handleNavClick(e, '/settings')}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                        pathname === '/settings'
+                        pathname.startsWith('/settings')
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                       }`}
@@ -752,9 +870,9 @@ export function PosHeader({
             </div>
 
             {/* Drawer Footer */}
-            <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="pt-4 border-t border-slate-800 space-y-3 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-xs font-bold text-amber-400">
+                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-amber-400 shrink-0">
                   {profile?.display_name?.slice(0, 2).toUpperCase() || 'KS'}
                 </div>
                 <div className="truncate text-xs">
@@ -775,7 +893,7 @@ export function PosHeader({
                     setMobileNavOpen(false);
                   }}
                   disabled={isRefreshing}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                   <span>Refresh</span>
@@ -784,7 +902,7 @@ export function PosHeader({
                 <button
                   type="button"
                   onClick={signOut}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-medium border border-red-800/40 transition"
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-medium border border-red-800/40 transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Keluar</span>
