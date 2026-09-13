@@ -252,6 +252,7 @@ export interface ProductItem {
   id: string;
   category_id: string;
   category_name?: string;
+  category_is_active?: boolean;
   sku: string;
   barcode: string | null;
   name: string;
@@ -263,6 +264,8 @@ export interface ProductItem {
   updated_at?: string;
   product_outlets?: ProductOutletItem[];
   conversions?: ProductUnitConversionItem[];
+  current_stock?: number | null;
+  service_consumption_count?: number;
 }
 
 export interface FinancialAccountItem {

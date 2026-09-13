@@ -80,11 +80,17 @@ export function ProductConversionModal({
     }
   }, [product, supabase]);
 
+  // Keyboard Escape listener
   useEffect(() => {
-    if (isOpen && product) {
-      loadData();
-    }
-  }, [isOpen, product, loadData]);
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !product) return null;
 
@@ -179,10 +185,10 @@ export function ProductConversionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Scale className="w-5 h-5" />
@@ -198,7 +204,9 @@ export function ProductConversionModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Tutup modal"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
@@ -320,13 +328,14 @@ export function ProductConversionModal({
                         type="button"
                         onClick={() => handleRemoveConversion(item)}
                         disabled={isDeleting}
-                        className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-950/40 transition"
+                        aria-label={`Hapus konversi satuan ${item.unit_name}`}
+                        className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-red-400 hover:text-red-300 hover:bg-red-950/40 transition border border-transparent hover:border-red-900/40 disabled:opacity-50"
                         title="Hapus Satuan Konversi"
                       >
                         {isDeleting ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         )}
                       </button>
                     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { usePos } from '../../context/pos-context';
 import type {
   ProductItem,
@@ -16,7 +16,8 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Coins,
+  AlertTriangle,
+  Scale,
 } from 'lucide-react';
 
 interface ProductFormModalProps {
@@ -64,54 +65,140 @@ export function ProductFormModal({
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
+
+  // Initial snapshot for dirty state detection
+  const initialSnapshotRef = useRef<string>('');
+
+  // Active system outlets (outlets that are active in business)
+  const activeSystemOutlets = useMemo(
+    () => outlets.filter((o) => o.is_active !== false),
+    [outlets]
+  );
 
   // Initialize form state
   useEffect(() => {
-    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
+    if (!isOpen) {
+      setShowDiscardConfirm(false);
+      return;
+    }
+
+    let initialSku = '';
+    let initialBarcode = '';
+    let initialName = '';
+    let initialCategory = categories[0]?.id || '';
+    let initialBaseUnit = 'pcs';
+    let initialCost = '0';
+    let initialDesc = '';
+    let initialIsActive = true;
+    const priceMap: Record<string, OutletPriceState> = {};
 
     if (product) {
-      setSku(product.sku || '');
-      setBarcode(product.barcode || '');
-      setName(product.name || '');
-      setCategoryId(product.category_id || categories[0]?.id || '');
-      setBaseUnit(product.base_unit || 'pcs');
-      setDefaultCostPrice(product.default_cost_price?.toString() || '0');
-      setDescription(product.description || '');
-      setIsActive(product.is_active !== false);
+      initialSku = product.sku || '';
+      initialBarcode = product.barcode || '';
+      initialName = product.name || '';
+      initialCategory = product.category_id || categories[0]?.id || '';
+      initialBaseUnit = product.base_unit || 'pcs';
+      initialCost = product.default_cost_price !== null ? product.default_cost_price.toString() : '0';
+      initialDesc = product.description || '';
+      initialIsActive = product.is_active !== false;
 
       // Map existing outlet prices
-      const priceMap: Record<string, OutletPriceState> = {};
       activeSystemOutlets.forEach((o) => {
         const assigned = product.product_outlets?.find((po) => po.outlet_id === o.id);
         priceMap[o.id] = {
           outlet_id: o.id,
-          selling_price: assigned ? assigned.selling_price.toString() : '75000',
+          selling_price: assigned ? assigned.selling_price.toString() : '0',
           is_active: assigned ? assigned.is_active : true,
         };
       });
-      setOutletPrices(priceMap);
     } else {
-      setSku('');
-      setBarcode('');
-      setName('');
-      setCategoryId(categories[0]?.id || '');
-      setBaseUnit('pcs');
-      setDefaultCostPrice('0');
-      setDescription('');
-      setIsActive(true);
+      initialSku = '';
+      initialBarcode = '';
+      initialName = '';
+      initialCategory = categories[0]?.id || '';
+      initialBaseUnit = 'pcs';
+      initialCost = '0';
+      initialDesc = '';
+      initialIsActive = true;
 
-      const priceMap: Record<string, OutletPriceState> = {};
+      // New product: default selling price is empty string, NOT magic number 75000
       activeSystemOutlets.forEach((o) => {
         priceMap[o.id] = {
           outlet_id: o.id,
-          selling_price: '75000',
+          selling_price: '',
           is_active: true,
         };
       });
-      setOutletPrices(priceMap);
     }
+
+    setSku(initialSku);
+    setBarcode(initialBarcode);
+    setName(initialName);
+    setCategoryId(initialCategory);
+    setBaseUnit(initialBaseUnit);
+    setDefaultCostPrice(initialCost);
+    setDescription(initialDesc);
+    setIsActive(initialIsActive);
+    setOutletPrices(priceMap);
     setFormError(null);
-  }, [product, categories, outlets, isOpen]);
+    setShowDiscardConfirm(false);
+
+    // Save initial state snapshot for dirty comparison
+    initialSnapshotRef.current = JSON.stringify({
+      sku: initialSku,
+      barcode: initialBarcode,
+      name: initialName,
+      categoryId: initialCategory,
+      baseUnit: initialBaseUnit,
+      defaultCostPrice: initialCost,
+      description: initialDesc,
+      isActive: initialIsActive,
+      outletPrices: priceMap,
+    });
+  }, [product, categories, activeSystemOutlets, isOpen]);
+
+  // Check if form is dirty
+  const isDirty = useMemo(() => {
+    if (!initialSnapshotRef.current) return false;
+    const currentSnapshot = JSON.stringify({
+      sku,
+      barcode,
+      name,
+      categoryId,
+      baseUnit,
+      defaultCostPrice,
+      description,
+      isActive,
+      outletPrices,
+    });
+    return currentSnapshot !== initialSnapshotRef.current;
+  }, [sku, barcode, name, categoryId, baseUnit, defaultCostPrice, description, isActive, outletPrices]);
+
+  // Safe close handler
+  const handleRequestClose = () => {
+    if (isDirty && !isSubmitting) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  // Keyboard Escape listener
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showDiscardConfirm) {
+          setShowDiscardConfirm(false);
+        } else {
+          handleRequestClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, showDiscardConfirm, isDirty, isSubmitting]);
 
   if (!isOpen) return null;
 
@@ -157,18 +244,17 @@ export function ProductFormModal({
       return;
     }
     if (!trimmedUnit) {
-      setFormError('Base unit produk wajib diisi.');
+      setFormError('Satuan dasar (base unit) produk wajib diisi.');
       return;
     }
 
     const costNum = parseFloat(defaultCostPrice) || 0;
     if (costNum < 0) {
-      setFormError('Default cost price tidak boleh bernilai negatif.');
+      setFormError('Estimasi HPP (Default Cost Price) tidak boleh bernilai negatif.');
       return;
     }
 
     // Filter to active system outlets where the outlet is marked active in the modal
-    const activeSystemOutlets = outlets.filter((o) => o.is_active !== false);
     const selectedOutlets = activeSystemOutlets.filter((o) => outletPrices[o.id]?.is_active);
 
     if (selectedOutlets.length === 0) {
@@ -179,9 +265,14 @@ export function ProductFormModal({
     // Validate outlet prices
     for (const o of selectedOutlets) {
       const pState = outletPrices[o.id];
-      const pNum = parseFloat(pState?.selling_price || '0');
+      const rawPrice = pState?.selling_price?.trim() || '';
+      if (rawPrice === '') {
+        setFormError(`Harga jual pada cabang "${o.name}" wajib diisi (minimal Rp 0).`);
+        return;
+      }
+      const pNum = parseFloat(rawPrice);
       if (isNaN(pNum) || pNum < 0) {
-        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal 0).`);
+        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal Rp 0).`);
         return;
       }
     }
@@ -199,7 +290,7 @@ export function ProductFormModal({
     const outletIdSet = new Set<string>();
     for (const item of outletsPayload) {
       if (outletIdSet.has(item.outlet_id)) {
-        setFormError('Konfigurasi outlet produk tidak boleh duplikat.');
+        setFormError('Konfigurasi cabang outlet tidak boleh duplikat.');
         return;
       }
       outletIdSet.add(item.outlet_id);
@@ -209,7 +300,7 @@ export function ProductFormModal({
     try {
       const p_product_id = product ? product.id : null;
 
-      // Single atomic RPC: save_product_catalog_with_outlets
+      // Single atomic master RPC: save_product_catalog_with_outlets
       const { error: rpcErr } = await supabase.rpc(
         'save_product_catalog_with_outlets',
         {
@@ -240,18 +331,26 @@ export function ProductFormModal({
       onClose();
     } catch (err: unknown) {
       console.error('save_product_catalog_with_outlets error:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan produk.';
-      setFormError(msg);
+      const rawMsg = err instanceof Error ? err.message : 'Gagal menyimpan produk.';
+      if (rawMsg.includes('products_sku_key') || rawMsg.includes('23505') || rawMsg.toLowerCase().includes('sku')) {
+        setFormError(`Kode SKU "${trimmedSku}" sudah terdaftar pada produk lain. Silakan gunakan kode SKU berbeda.`);
+      } else if (rawMsg.includes('Minimal satu konfigurasi outlet')) {
+        setFormError('Pilih dan aktifkan minimal satu cabang outlet untuk produk ini.');
+      } else if (rawMsg.includes('Harga modal')) {
+        setFormError('Estimasi HPP produk tidak boleh bernilai negatif.');
+      } else {
+        setFormError(rawMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] relative">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Package className="w-5 h-5" />
@@ -261,13 +360,15 @@ export function ProductFormModal({
                 {isEditing ? 'Ubah Produk & Retail' : 'Tambah Produk Baru'}
               </h2>
               <p className="text-xs text-slate-400">
-                Konfigurasi SKU, barcode, unit dasar, dan tarif harga per cabang
+                Konfigurasi identitas SKU, satuan stok, dan tarif harga per cabang
               </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleRequestClose}
             disabled={isSubmitting}
+            aria-label="Tutup modal"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
@@ -275,208 +376,238 @@ export function ProductFormModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1 text-xs">
           {formError && (
-            <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs">
+            <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <span>{formError}</span>
+              <span className="leading-relaxed">{formError}</span>
             </div>
           )}
 
-          {/* Core Info Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* SKU */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                SKU Produk <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="CONTOH: PRD-POM-01"
-                value={sku}
-                onChange={(e) => setSku(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-              />
-            </div>
+          {/* SECTION 1: IDENTITAS PRODUK */}
+          <div className="space-y-3.5">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              1. Identitas Produk
+            </span>
 
-            {/* Barcode */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">Barcode / EAN (Opsional)</label>
-              <div className="relative">
-                <Barcode className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="8991234567890"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Name */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="block text-slate-300 font-semibold">
-                Nama Produk <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Chief Oilbased Pomade Vanilla 100gr"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-              />
-            </div>
-
-            {/* Category */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Kategori Produk <span className="text-red-400">*</span>
-              </label>
-              <select
-                required
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
-              >
-                <option value="" disabled>
-                  -- Pilih Kategori --
-                </option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Base Unit */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Satuan Dasar (Base Unit) <span className="text-red-400">*</span>
-              </label>
-              <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* SKU */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">
+                  SKU Produk <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="pcs / ml / gram"
-                  value={baseUnit}
-                  onChange={(e) => setBaseUnit(e.target.value.toLowerCase())}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
+                  placeholder="CONTOH: PRD-POM-01"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value.toUpperCase())}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none transition uppercase"
                 />
+                <p className="text-[10px] text-slate-500">Kode unik inventaris global untuk stok dan barcode.</p>
+              </div>
+
+              {/* Barcode */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">Barcode / EAN (Opsional)</label>
+                <div className="relative">
+                  <Barcode className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="8991234567890"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none transition text-xs"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">Dapat dipindai langsung dengan scanner laser POS.</p>
+              </div>
+
+              {/* Name */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-slate-300 font-semibold">
+                  Nama Produk <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Chief Oilbased Pomade Vanilla 100gr"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-slate-300 font-semibold">
+                  Kategori Produk <span className="text-red-400">*</span>
+                </label>
                 <select
-                  value={baseUnit}
-                  onChange={(e) => setBaseUnit(e.target.value)}
-                  className="px-2 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 text-xs focus:outline-none"
+                  required
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition"
                 >
-                  {COMMON_BASE_UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
+                  <option value="" disabled>
+                    -- Pilih Kategori Produk --
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {!c.is_active ? '(Nonaktif)' : ''}
                     </option>
                   ))}
                 </select>
               </div>
-            </div>
 
-            {/* Default Cost Price */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="block text-slate-300 font-semibold">
-                Estimasi Harga Pokok Pembelian (Default Cost Price / HPP)
-              </label>
-              <div className="relative">
-                <Coins className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="number"
-                  min={0}
-                  step="500"
-                  value={defaultCostPrice}
-                  onChange={(e) => setDefaultCostPrice(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
+              {/* Description */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-slate-300 font-semibold">Deskripsi Produk (Opsional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Keterangan bahan, aroma, panduan penggunaan, atau kemasan..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition resize-none"
                 />
               </div>
             </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Deskripsi Produk</label>
-            <textarea
-              rows={2}
-              placeholder="Keterangan kandungan, aroma, atau panduan penggunaan produk..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs resize-none"
-            />
+          {/* Divider */}
+          <div className="border-t border-slate-800/80" />
+
+          {/* SECTION 2: SATUAN & HPP */}
+          <div className="space-y-3.5">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              2. Satuan & HPP (Harga Pokok)
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Base Unit with Quick Suggestion Chips */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">
+                  Satuan Dasar (Base Unit) <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <Scale className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="pcs / ml / gram / botol"
+                    value={baseUnit}
+                    onChange={(e) => setBaseUnit(e.target.value.toLowerCase())}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl text-xs text-white font-mono placeholder-slate-600 focus:outline-none transition"
+                  />
+                </div>
+                {/* Quick Unit Chips */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-slate-500 mr-1">Saran:</span>
+                  {COMMON_BASE_UNITS.slice(0, 6).map((unit) => (
+                    <button
+                      key={unit}
+                      type="button"
+                      onClick={() => setBaseUnit(unit)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition ${
+                        baseUnit === unit
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold'
+                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      {unit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Default Cost Price (HPP) */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">
+                  Estimasi HPP (Default Cost Price)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-mono font-semibold">
+                    Rp
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="500"
+                    placeholder="0"
+                    value={defaultCostPrice}
+                    onChange={(e) => setDefaultCostPrice(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl text-xs text-white font-mono focus:outline-none transition"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Biaya modal referensi untuk perhitungan margin laba kotor.
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Active Toggle */}
-          <div className="pt-1">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
-              />
-              <span className="text-slate-300 font-medium">
-                Produk Aktif (Tampil di kasir POS dan inventaris)
-              </span>
-            </label>
-          </div>
+          {/* Divider */}
+          <div className="border-t border-slate-800/80" />
 
-          {/* Outlet Pricing Matrix */}
-          <div className="space-y-3 pt-2">
+          {/* SECTION 3: HARGA & KETERSEDIAAN CABANG */}
+          <div className="space-y-3.5">
             <div>
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Store className="w-3.5 h-3.5 text-amber-400" />
-                <span>Matriks Harga Tiap Cabang Outlet</span>
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Tentukan harga jual produk retail dan status ketersediaan pada masing-masing cabang
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+                3. Matriks Harga & Ketersediaan Cabang
+              </span>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Tentukan harga jual produk retail dan status ketersediaan pada masing-masing cabang. Produk hanya dapat ditransaksikan di kasir pada cabang yang diaktifkan.
               </p>
             </div>
 
-            <div className="space-y-2">
-              {outlets.filter((o) => o.is_active !== false).map((o) => {
+            <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/60 divide-y divide-slate-800/80 p-1">
+              {activeSystemOutlets.map((o) => {
                 const pState = outletPrices[o.id] || {
                   outlet_id: o.id,
-                  selling_price: '75000',
+                  selling_price: '',
                   is_active: true,
                 };
 
                 return (
                   <div
                     key={o.id}
-                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-4"
+                    className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
                   >
-                    <div className="min-w-0">
-                      <div className="font-semibold text-white truncate">{o.name}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{o.code}</div>
+                    <div className="min-w-0 flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-300 shrink-0">
+                        <Store className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-200 truncate">{o.name}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{o.code}</div>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-400 text-xs font-medium">Rp</span>
+                        <span className="text-slate-500 text-xs font-mono font-medium">Rp</span>
                         <input
                           type="number"
                           min={0}
                           step="1000"
+                          placeholder="0"
                           value={pState.selling_price}
                           onChange={(e) => handlePriceChange(o.id, e.target.value)}
-                          className="w-28 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-right text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                          disabled={!pState.is_active}
+                          className="w-32 px-3 py-1.5 bg-slate-900 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl text-right text-white font-mono text-xs focus:outline-none transition disabled:opacity-40 disabled:bg-slate-950"
                         />
                       </div>
 
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-300">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-300 select-none min-h-[40px] px-2 py-1 rounded-lg hover:bg-slate-800/50 transition">
                         <input
                           type="checkbox"
                           checked={pState.is_active}
                           onChange={() => handleOutletActiveToggle(o.id)}
-                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 accent-amber-500 cursor-pointer"
                         />
-                        <span>Aktif</span>
+                        <span className={pState.is_active ? 'text-emerald-400 font-semibold' : 'text-slate-500'}>
+                          {pState.is_active ? 'Aktif' : 'Nonaktif'}
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -485,20 +616,49 @@ export function ProductFormModal({
             </div>
           </div>
 
+          {/* Divider */}
+          <div className="border-t border-slate-800/80" />
+
+          {/* SECTION 4: STATUS MASTER */}
+          <div className="space-y-3.5">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              4. Status Master Produk
+            </span>
+
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded border-slate-700 bg-slate-950 accent-amber-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-slate-200 font-bold block text-xs">
+                    Katalog Master Produk Aktif
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                    Produk nonaktif tidak ditampilkan pada katalog kasir seluruh cabang dan tidak dapat dipilih untuk transaksi baru.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           {/* Action Buttons */}
           <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleRequestClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold"
+              className="px-4 py-2.5 min-h-[40px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold border border-slate-700/80"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-500/20 transition disabled:opacity-50 text-xs"
+              className="flex items-center gap-1.5 px-4 py-2.5 min-h-[40px] bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-xs shadow-amber-500/20 transition disabled:opacity-40 text-xs"
             >
               {isSubmitting ? (
                 <>
@@ -514,6 +674,45 @@ export function ProductFormModal({
             </button>
           </div>
         </form>
+
+        {/* Discard Changes Confirmation Dialog */}
+        {showDiscardConfirm && (
+          <div className="absolute inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Perubahan Belum Disimpan</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Data yang sudah Anda ubah akan hilang jika menutup formulir ini.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  className="px-3.5 py-2 min-h-[40px] bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition border border-slate-700/80"
+                >
+                  Tetap di Sini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDiscardConfirm(false);
+                    onClose();
+                  }}
+                  className="px-3.5 py-2 min-h-[40px] bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                >
+                  Buang Perubahan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
