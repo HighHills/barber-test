@@ -12,8 +12,6 @@ import {
   Power,
   RefreshCw,
   Loader2,
-  CheckCircle2,
-  XCircle,
   Building,
   AlertTriangle,
 } from 'lucide-react';
@@ -82,11 +80,12 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
 
       setPaymentMethods(formatted);
       setFinancialAccounts(faData || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load payment methods data:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal memuat metode pembayaran';
       onNotification?.({
         type: 'ERROR',
-        message: err.message || 'Gagal memuat metode pembayaran',
+        message: msg,
       });
     } finally {
       setIsLoading(false);
@@ -97,6 +96,14 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Operational Counts
+  const activeCount = useMemo(() => paymentMethods.filter((pm) => pm.is_active).length, [paymentMethods]);
+  const inactiveCount = useMemo(() => paymentMethods.length - activeCount, [paymentMethods, activeCount]);
+  const withAccountCount = useMemo(
+    () => paymentMethods.filter((pm) => Boolean(pm.financial_account_id)).length,
+    [paymentMethods]
+  );
 
   // 2. Toggle Status via RPC save_payment_method
   const handleToggleActive = async (method: PaymentMethodItem) => {
@@ -129,12 +136,13 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
       );
 
       // Refresh POS state
-      refreshData();
-    } catch (err: any) {
+      await refreshData();
+    } catch (err: unknown) {
       console.error('Failed to toggle payment method status:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal mengubah status metode pembayaran';
       onNotification?.({
         type: 'ERROR',
-        message: err.message || 'Gagal mengubah status metode pembayaran',
+        message: msg,
       });
     } finally {
       setTogglingId(null);
@@ -149,7 +157,8 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
         !query ||
         pm.name.toLowerCase().includes(query) ||
         pm.code.toLowerCase().includes(query) ||
-        (pm.financial_account_name && pm.financial_account_name.toLowerCase().includes(query));
+        (pm.financial_account_name && pm.financial_account_name.toLowerCase().includes(query)) ||
+        (pm.financial_account_code && pm.financial_account_code.toLowerCase().includes(query));
 
       const matchType = typeFilter === 'ALL' || pm.type === typeFilter;
 
@@ -183,29 +192,39 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
     }
   };
 
+  const isFiltered = Boolean(searchQuery.trim() || typeFilter !== 'ALL' || statusFilter !== 'ALL');
+
   return (
-    <div className="space-y-6">
+    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6 shadow-xs">
       {/* Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <CreditCard className="w-6 h-6 text-amber-500" />
-            Metode Pembayaran
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Kelola kanal transaksi pembayaran kasir POS dan integrasi pembukuan jurnal akun keuangan.
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <CreditCard className="w-4 h-4" />
+            </div>
+            <h2 className="text-base font-bold text-white leading-tight">
+              Metode Pembayaran
+            </h2>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Kelola kanal transaksi pembayaran kasir POS dan pemetaan akun buku besar (Chart of Accounts).
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {paymentMethods.length} metode terdaftar · {activeCount} aktif · {inactiveCount} nonaktif · {withAccountCount} terhubung ke COA
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => loadData(true)}
             disabled={isLoading || isRefreshing}
-            className="p-2.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors disabled:opacity-50"
-            title="Muat Ulang Data"
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium border border-slate-700/80 min-h-[40px]"
+            title="Muat ulang data metode pembayaran"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Segarkan</span>
           </button>
 
           <button
@@ -214,32 +233,34 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
               setEditingMethod(null);
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-sm rounded-lg transition-colors shadow-sm shadow-amber-500/20"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-xs shadow-amber-500/20 min-h-[40px]"
           >
             <Plus className="w-4 h-4" />
-            Tambah Metode
+            <span>Tambah Metode</span>
           </button>
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
+        {/* Search */}
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama atau kode..."
-            className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            placeholder="Cari nama, kode, atau akun COA..."
+            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition min-h-[40px]"
           />
         </div>
 
-        <div>
+        {/* Type Filter */}
+        <div className="w-full lg:w-48 shrink-0">
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition min-h-[40px]"
           >
             <option value="ALL">Semua Tipe Pembayaran</option>
             <option value="CASH">Tunai (Cash)</option>
@@ -252,169 +273,179 @@ export function PaymentMethodsPanel({ onNotification }: PaymentMethodsPanelProps
           </select>
         </div>
 
-        <div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-          >
-            <option value="ALL">Semua Status</option>
-            <option value="ACTIVE">Hanya Aktif</option>
-            <option value="INACTIVE">Hanya Nonaktif</option>
-          </select>
+        {/* Status Segmented Tabs */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs shrink-0 self-start lg:self-auto">
+          {(
+            [
+              { id: 'ALL', label: `Semua (${paymentMethods.length})` },
+              { id: 'ACTIVE', label: `Aktif (${activeCount})` },
+              { id: 'INACTIVE', label: `Nonaktif (${inactiveCount})` },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStatusFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[32px] ${
+                statusFilter === tab.id
+                  ? 'bg-slate-800 text-amber-300 font-semibold shadow-xs border border-slate-700/80'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Main List */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
-          <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-3" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">Memuat metode pembayaran...</p>
-        </div>
-      ) : filteredMethods.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center px-4">
-          <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-3">
-            <CreditCard className="w-6 h-6" />
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-16 space-y-3">
+            <Loader2 className="w-7 h-7 animate-spin text-amber-500" />
+            <p className="text-xs text-slate-400">Memuat data metode pembayaran...</p>
           </div>
-          <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">
-            {searchQuery || typeFilter !== 'ALL' || statusFilter !== 'ALL'
-              ? 'Tidak ada metode pembayaran yang cocok'
-              : 'Belum ada metode pembayaran'}
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-            {searchQuery || typeFilter !== 'ALL' || statusFilter !== 'ALL'
-              ? 'Coba sesuaikan kata kunci pencarian atau filter status yang Anda pilih.'
-              : 'Tambahkan metode pembayaran untuk menerima transaksi tunai, transfer, atau QRIS di kasir.'}
-          </p>
-          {(searchQuery || typeFilter !== 'ALL' || statusFilter !== 'ALL') ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setTypeFilter('ALL');
-                setStatusFilter('ALL');
-              }}
-              className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline"
-            >
-              Reset Semua Filter
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingMethod(null);
-                setIsModalOpen(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs rounded-lg transition-colors shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Tambah Metode Sekarang
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredMethods.map((pm) => (
-            <div
-              key={pm.id}
-              className={`p-4 bg-white dark:bg-slate-900 rounded-xl border transition-all flex flex-col justify-between ${
-                pm.is_active
-                  ? 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                  : 'border-slate-200/60 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/40 opacity-75'
-              }`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3 mb-2.5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
+        ) : filteredMethods.length === 0 ? (
+          <div className="p-12 text-center text-xs text-slate-500 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">
+                {isFiltered
+                  ? 'Tidak ada metode pembayaran yang cocok'
+                  : 'Belum ada metode pembayaran terdaftar'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                {isFiltered
+                  ? 'Coba sesuaikan kata kunci pencarian atau filter status yang Anda pilih.'
+                  : 'Daftarkan metode pembayaran untuk kasir POS seperti Tunai, QRIS, atau Transfer Bank.'}
+              </p>
+            </div>
+            {isFiltered ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setTypeFilter('ALL');
+                  setStatusFilter('ALL');
+                }}
+                className="inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 hover:underline pt-2"
+              >
+                Reset Semua Filter
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMethod(null);
+                  setIsModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-xs shadow-amber-500/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Metode Sekarang</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-800/80">
+            {filteredMethods.map((pm) => {
+              const isToggling = togglingId === pm.id;
+
+              return (
+                <div
+                  key={pm.id}
+                  className={`p-4 sm:p-5 transition hover:bg-slate-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    !pm.is_active ? 'opacity-70 bg-slate-950/40' : ''
+                  }`}
+                >
+                  {/* Left Side: Information & Mapping */}
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        {pm.code}
+                      </span>
+                      <h3 className="text-sm font-bold text-white leading-tight">
                         {pm.name}
                       </h3>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          {pm.code}
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/80">
+                        {getTypeLabel(pm.type)}
+                      </span>
+                      {pm.is_active ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          Aktif
                         </span>
-                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                          {getTypeLabel(pm.type)}
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                          Nonaktif
                         </span>
-                      </div>
+                      )}
+                    </div>
+
+                    {/* Financial Account COA Mapping */}
+                    <div className="flex items-center flex-wrap gap-2 text-xs">
+                      {pm.financial_account_code ? (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                          <Building className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="text-slate-400">Akun COA:</span>
+                          <span className="font-mono text-amber-400 font-semibold">
+                            [{pm.financial_account_code}]
+                          </span>
+                          <span className="text-slate-200 font-medium">
+                            {pm.financial_account_name}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400/90 font-medium">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Belum dipetakan ke akun buku kas/bank (COA)</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {pm.is_active ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50 shrink-0">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Aktif
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 shrink-0">
-                      <XCircle className="w-3 h-3" />
-                      Nonaktif
-                    </span>
-                  )}
+                  {/* Right Side: Operational Actions */}
+                  <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingMethod(pm);
+                        setIsModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition border border-slate-700/80 min-h-[40px]"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Edit</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleActive(pm)}
+                      disabled={isToggling}
+                      className={`flex items-center justify-center p-2 rounded-xl border transition min-h-[40px] min-w-[40px] ${
+                        pm.is_active
+                          ? 'border-slate-700/80 bg-slate-800/40 text-slate-400 hover:text-rose-400 hover:border-rose-900/50 hover:bg-rose-950/20'
+                          : 'border-slate-700/80 bg-slate-800/40 text-slate-400 hover:text-emerald-400 hover:border-emerald-900/50 hover:bg-emerald-950/20'
+                      }`}
+                      title={pm.is_active ? 'Nonaktifkan Metode Pembayaran' : 'Aktifkan Metode Pembayaran'}
+                      aria-label={pm.is_active ? `Nonaktifkan ${pm.name}` : `Aktifkan ${pm.name}`}
+                    >
+                      {isToggling ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                      ) : (
+                        <Power className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-
-                {/* Financial Account Mapping */}
-                <div className="mt-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs">
-                  <span className="text-slate-400 dark:text-slate-500 block mb-1 font-medium flex items-center gap-1">
-                    <Building className="w-3 h-3" />
-                    Mapping Jurnal Akun Keuangan:
-                  </span>
-                  {pm.financial_account_code ? (
-                    <div className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <span className="font-mono text-amber-600 dark:text-amber-400">
-                        [{pm.financial_account_code}]
-                      </span>
-                      <span>{pm.financial_account_name}</span>
-                    </div>
-                  ) : (
-                    <div className="text-amber-600 dark:text-amber-400 flex items-center gap-1 text-[11px] font-medium">
-                      <AlertTriangle className="w-3 h-3" />
-                      <span>Belum dimapping ke COA Keuangan</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingMethod(pm);
-                    setIsModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleToggleActive(pm)}
-                  disabled={togglingId === pm.id}
-                  className={`p-1.5 rounded-lg border transition-colors ${
-                    pm.is_active
-                      ? 'border-emerald-200 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                      : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                  title={pm.is_active ? 'Nonaktifkan Metode' : 'Aktifkan Metode'}
-                >
-                  {togglingId === pm.id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
-                  ) : (
-                    <Power className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Modal */}
       <PaymentMethodModal

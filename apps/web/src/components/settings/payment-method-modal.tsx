@@ -67,6 +67,16 @@ export function PaymentMethodModal({
     setFormError(null);
   }, [paymentMethod, isOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,32 +122,35 @@ export function PaymentMethodModal({
         message: `Metode pembayaran "${trimmedName}" berhasil ${isEditing ? 'diperbarui' : 'ditambahkan'}`,
       });
 
-      refreshData();
+      await refreshData();
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save payment method:', err);
-      setFormError(err.message || 'Terjadi kesalahan saat menyimpan metode pembayaran.');
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan metode pembayaran.';
+      setFormError(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="p-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
-              <CreditCard className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <CreditCard className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                {isEditing ? 'Edit Metode Pembayaran' : 'Tambah Metode Pembayaran'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Konfigurasi kanal pembayaran dan mapping akun buku kas/bank.
+              <h3 className="text-base font-bold text-white leading-tight">
+                {isEditing ? 'Ubah Metode Pembayaran' : 'Tambah Metode Pembayaran'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isEditing
+                  ? `Perbarui konfigurasi ${paymentMethod?.name}`
+                  : 'Konfigurasi kanal pembayaran dan pemetaan akun buku kas/bank'}
               </p>
             </div>
           </div>
@@ -145,137 +158,153 @@ export function PaymentMethodModal({
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Tutup modal metode pembayaran"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition min-h-[40px] min-w-[40px] flex items-center justify-center"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 text-xs">
           {formError && (
-            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-rose-700 dark:text-rose-300 font-medium leading-relaxed">
-                {formError}
-              </p>
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span>{formError}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Code */}
+          {/* Section 1: Identitas Kanal Pembayaran */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
+              Identitas Kanal Pembayaran
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Code */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Kode Pembayaran <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  placeholder="misal: CASH, QRIS_BCA"
+                  disabled={isSubmitting}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-amber-300 font-mono placeholder-slate-600 focus:outline-none transition min-h-[40px] disabled:opacity-50"
+                />
+              </div>
+
+              {/* Type */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Tipe Pembayaran <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition min-h-[40px] disabled:opacity-50"
+                >
+                  {PAYMENT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Name */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Kode Pembayaran <span className="text-rose-500">*</span>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Nama Tampilan <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="misal: CASH, QRIS_BCA"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="misal: Tunai, BCA QRIS, Mandiri EDC"
                 disabled={isSubmitting}
-                className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 disabled:opacity-50"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition min-h-[40px] disabled:opacity-50"
               />
             </div>
+          </div>
 
-            {/* Type */}
+          {/* Section 2: Integrasi Pembukuan & Status */}
+          <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
+              Integrasi Pembukuan & Status Operasional
+            </span>
+
+            {/* Financial Account (COA Mapping) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Tipe Pembayaran <span className="text-rose-500">*</span>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Akun Keuangan (COA Journal Mapping)
               </label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                disabled={isSubmitting}
-                className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 disabled:opacity-50"
-              >
-                {PAYMENT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Name */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Nama Tampilan <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="misal: Tunai, BCA QRIS, Mandiri EDC"
-              disabled={isSubmitting}
-              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 disabled:opacity-50"
-            />
-          </div>
-
-          {/* Financial Account (COA Mapping) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Akun Keuangan (COA Journal Mapping)
-            </label>
-            <div className="relative">
               <select
                 value={financialAccountId}
                 onChange={(e) => setFinancialAccountId(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 disabled:opacity-50"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition min-h-[40px] disabled:opacity-50"
               >
-                <option value="">-- Tanpa Mapping Akun Keuangan --</option>
+                <option value="">-- Tanpa Pemetaan Akun Keuangan --</option>
                 {financialAccounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     [{acc.account_code}] {acc.account_name} ({acc.account_type})
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Digunakan sistem untuk posting otomatis jurnal kas/bank saat transaksi kasir POS selesai.
+              </p>
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              Digunakan sistem untuk posting jurnal kas/bank saat transaksi penjualan selesai.
-            </p>
-          </div>
 
-          {/* Active Status */}
-          <div className="pt-2">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                disabled={isSubmitting}
-                className="w-4 h-4 rounded text-amber-500 border-slate-300 dark:border-slate-700 focus:ring-amber-500 focus:ring-offset-0 bg-slate-50 dark:bg-slate-800"
-              />
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Aktif (Tampilkan metode pembayaran ini di kasir POS)
-              </span>
-            </label>
+            {/* Active Status */}
+            <div className="pt-1">
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition select-none">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="w-4 h-4 mt-0.5 rounded text-amber-500 border-slate-700 focus:ring-amber-500/30 bg-slate-900"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">
+                    Metode Pembayaran Aktif
+                  </span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    Tampilkan kanal pembayaran ini di kasir POS saat memilih metode pembayaran transaksi.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition min-h-[40px]"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs rounded-lg transition-colors shadow-sm disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-xs shadow-amber-500/20 disabled:opacity-50 min-h-[40px]"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Menyimpan...
+                  <span>Menyimpan...</span>
                 </>
               ) : (
-                'Simpan Metode'
+                <span>{isEditing ? 'Perbarui Metode' : 'Simpan Metode'}</span>
               )}
             </button>
           </div>
