@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Package,
   Info,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ServiceConsumptionModalProps {
@@ -19,6 +20,7 @@ interface ServiceConsumptionModalProps {
   onClose: () => void;
   service: ServiceItem | null;
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
+  onSuccess?: () => void;
 }
 
 export function ServiceConsumptionModal({
@@ -26,6 +28,7 @@ export function ServiceConsumptionModal({
   onClose,
   service,
   onNotification,
+  onSuccess,
 }: ServiceConsumptionModalProps): React.JSX.Element | null {
   const { supabase, refreshData } = usePos();
 
@@ -107,6 +110,17 @@ export function ServiceConsumptionModal({
     }
   }, [isOpen, service, loadData]);
 
+  // Escape key listener for keyboard accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting && !deletingId) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, deletingId, onClose]);
+
   if (!isOpen || !service) return null;
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
@@ -145,11 +159,12 @@ export function ServiceConsumptionModal({
 
       onNotification?.({
         type: 'SUCCESS',
-        message: `Bahan konsumsi untuk "${service.name}" berhasil diperbarui!`,
+        message: `Bahan "${selectedProduct?.name || 'Produk'}" berhasil ditambahkan ke layanan "${service.name}".`,
       });
 
       await loadData();
       await refreshData();
+      onSuccess?.();
       setQuantity('0.05');
     } catch (err: unknown) {
       console.error('save_service_consumption error:', err);
@@ -176,11 +191,12 @@ export function ServiceConsumptionModal({
 
       onNotification?.({
         type: 'SUCCESS',
-        message: `Bahan "${item.product_name}" dihapus dari konsumsi layanan "${service.name}".`,
+        message: `Bahan "${item.product_name}" dinonaktifkan dari resep "${service.name}".`,
       });
 
       await loadData();
       await refreshData();
+      onSuccess?.();
     } catch (err: unknown) {
       console.error('Remove consumption error:', err);
       const msg = err instanceof Error ? err.message : 'Gagal menghapus bahan konsumsi.';
@@ -191,64 +207,70 @@ export function ServiceConsumptionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <Boxes className="w-5 h-5" />
+        <div className="p-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Boxes className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white leading-tight">
-                Konsumsi Bahan (Service Consumption)
-              </h2>
-              <p className="text-xs text-slate-400">
-                Layanan: <strong className="text-amber-300">{service.name}</strong> ({service.code})
+              <h3 className="text-base font-bold text-white leading-tight">
+                Resep Bahan Layanan
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Layanan: <strong className="text-amber-300 font-semibold">{service.name}</strong> ({service.code})
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            aria-label="Tutup modal resep bahan layanan"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 text-xs">
           {formError && (
-            <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{formError}</span>
             </div>
           )}
 
-          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 flex items-start gap-2">
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 flex items-start gap-2.5">
             <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-relaxed text-slate-400">
               Setiap kali layanan ini diselesaikan di kasir POS, sistem secara otomatis akan
-              mengurangi stok bahan produk yang terdaftar di bawah ini sesuai quantity yang ditentukan.
+              mengurangi stok produk bahan yang terdaftar di bawah ini dari inventori cabang sesuai kuantitas resep.
             </p>
           </div>
 
           {/* Add New Consumption Form */}
           <form
             onSubmit={handleAddConsumption}
-            className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3"
+            className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3.5"
           >
-            <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-              <Plus className="w-3.5 h-3.5 text-amber-400" />
-              <span>Tambah / Ubah Bahan Konsumsi</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5 text-amber-400" />
+                <span>Tambah / Perbarui Bahan</span>
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-7 space-y-1">
-                <label className="block text-slate-400 font-semibold text-[11px]">Pilih Produk Bahan</label>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Pilih Produk Bahan <span className="text-red-400">*</span>
+                </label>
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none transition"
                 >
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -258,20 +280,23 @@ export function ServiceConsumptionModal({
                 </select>
               </div>
 
-              <div className="sm:col-span-5 space-y-1">
-                <label className="block text-slate-400 font-semibold text-[11px]">
-                  Pemakaian ({selectedProduct?.base_unit || 'unit'})
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Jumlah Pemakaian per Layanan <span className="text-slate-500 font-normal">({selectedProduct?.base_unit || 'unit'})</span> <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="number"
                   step="0.0001"
                   min="0.0001"
                   required
-                  placeholder="0.05"
+                  placeholder="Contoh: 0.05"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Kuantitas dihitung dalam satuan dasar produk (<span className="text-amber-300 font-mono">{selectedProduct?.base_unit || 'unit'}</span>).
+                </p>
               </div>
             </div>
 
@@ -279,33 +304,41 @@ export function ServiceConsumptionModal({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-xs shadow-amber-500/20 disabled:opacity-40"
               >
                 {isSubmitting ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
                 ) : (
-                  <Plus className="w-3.5 h-3.5" />
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Simpan Resep Bahan</span>
+                  </>
                 )}
-                <span>Simpan Pemakaian Bahan</span>
               </button>
             </div>
           </form>
 
           {/* Current Consumptions List (Only Active) */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Daftar Bahan Yang Terpakai ({activeConsumptions.length})
-            </h3>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                Daftar Bahan Yang Terpakai ({activeConsumptions.length})
+              </h4>
+            </div>
 
             {isLoading ? (
-              <div className="py-6 text-center text-slate-400">
+              <div className="py-8 text-center text-slate-400">
                 <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
-                <p>Memuat daftar konsumsi bahan...</p>
+                <p className="text-xs">Memuat daftar bahan konsumsi...</p>
               </div>
             ) : activeConsumptions.length === 0 ? (
-              <div className="p-6 bg-slate-950/40 border border-slate-800 rounded-xl text-center text-slate-500">
-                <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>Layanan ini belum memiliki konfigurasi pemakaian bahan produk.</p>
+              <div className="p-6 bg-slate-950/60 border border-slate-800 rounded-xl text-center text-slate-500">
+                <Package className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-600" />
+                <p className="text-xs text-slate-400 font-medium">Layanan ini belum memiliki resep pemakaian bahan produk.</p>
+                <p className="text-[11px] text-slate-600 mt-0.5">Gunakan formulir di atas untuk mendaftarkan bahan seperti shampo, krim, atau pomade.</p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -315,16 +348,16 @@ export function ServiceConsumptionModal({
                   return (
                     <div
                       key={item.id}
-                      className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3 hover:border-slate-700 transition"
+                      className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3 hover:border-slate-700/80 transition"
                     >
-                      <div className="space-y-0.5">
-                        <div className="font-semibold text-white">{item.product_name}</div>
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="font-semibold text-white truncate">{item.product_name}</div>
                         <div className="text-[11px] text-slate-400 font-mono">
                           SKU: {item.product_sku}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2.5 shrink-0">
                         <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono font-bold text-xs">
                           {item.quantity} {item.product_base_unit}
                         </span>
@@ -333,7 +366,8 @@ export function ServiceConsumptionModal({
                           type="button"
                           onClick={() => handleRemoveConsumption(item)}
                           disabled={isDeleting}
-                          className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-950/40 transition"
+                          aria-label={`Hapus bahan ${item.product_name} dari resep`}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-300 hover:bg-red-950/40 border border-transparent hover:border-red-900/50 transition"
                           title="Hapus Pemakaian Bahan"
                         >
                           {isDeleting ? (
@@ -351,11 +385,11 @@ export function ServiceConsumptionModal({
           </div>
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/80 flex justify-end">
+        <div className="px-6 py-3.5 border-t border-slate-800 bg-slate-900/80 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold"
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/80 transition"
           >
             Selesai
           </button>
@@ -364,3 +398,4 @@ export function ServiceConsumptionModal({
     </div>
   );
 }
+

@@ -215,6 +215,7 @@ export interface ServiceItem {
   updated_at?: string;
   service_outlets?: ServiceOutletItem[];
   consumptions?: ServiceConsumptionItem[];
+  consumption_count?: number;
 }
 
 export interface ProductCategoryItem {

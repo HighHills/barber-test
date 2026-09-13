@@ -109,6 +109,17 @@ export function ServiceFormModal({
     setFormError(null);
   }, [service, categories, outlets, isOpen]);
 
+  // Escape key listener for keyboard accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
   if (!isOpen) return null;
 
   const handlePriceChange = (outletId: string, price: string) => {
@@ -158,7 +169,7 @@ export function ServiceFormModal({
 
     const costNum = parseFloat(defaultCostPrice) || 0;
     if (costNum < 0) {
-      setFormError('Default cost price tidak boleh bernilai negatif.');
+      setFormError('Estimasi biaya dasar (HPP) tidak boleh bernilai negatif.');
       return;
     }
 
@@ -176,7 +187,7 @@ export function ServiceFormModal({
       const pState = outletPrices[o.id];
       const pNum = parseFloat(pState?.selling_price || '0');
       if (isNaN(pNum) || pNum < 0) {
-        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal 0).`);
+        setFormError(`Harga jual pada cabang "${o.name}" tidak valid (minimal Rp 0).`);
         return;
       }
     }
@@ -234,185 +245,227 @@ export function ServiceFormModal({
       onClose();
     } catch (err: unknown) {
       console.error('save_service_catalog_with_outlets error:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan layanan.';
-      setFormError(msg);
+      const pgErr = err as { code?: string; message?: string };
+      if (pgErr?.code === '23505') {
+        setFormError(`Kode layanan "${trimmedCode}" sudah terdaftar. Silakan gunakan kode unik lain.`);
+      } else {
+        const msg = err instanceof Error ? err.message : 'Gagal menyimpan layanan.';
+        setFormError(msg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <Scissors className="w-5 h-5" />
+        <div className="p-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Scissors className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white leading-tight">
+              <h3 className="text-base font-bold text-white leading-tight">
                 {isEditing ? 'Ubah Layanan Jasa' : 'Tambah Layanan Jasa Baru'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                Konfigurasi durasi, kategori, dan matriks harga tiap cabang
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isEditing
+                  ? `Perbarui detail paket & matriks tarif cabang untuk ${service?.name}`
+                  : 'Daftarkan menu treatment, durasi pengerjaan, dan tarif per cabang'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            aria-label="Tutup modal layanan"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 text-xs">
           {formError && (
-            <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 flex items-start gap-2 text-xs">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{formError}</span>
             </div>
           )}
 
-          {/* Core Info Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Code */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Kode Layanan <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="CONTOH: HC-REGULAR"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-              />
-            </div>
-
-            {/* Name */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Nama Layanan <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Gentlemen Classic Haircut"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs"
-              />
-            </div>
-
-            {/* Category */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Kategori <span className="text-red-400">*</span>
-              </label>
-              <select
-                required
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
-              >
-                <option value="" disabled>
-                  -- Pilih Kategori --
-                </option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Duration */}
-            <div className="space-y-1.5">
-              <label className="block text-slate-300 font-semibold">
-                Durasi Pengerjaan (Menit) <span className="text-red-400">*</span>
-              </label>
-              <div className="relative">
-                <Clock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          {/* Section 1: Identitas Layanan */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              1. Identitas Layanan
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Code */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Kode Layanan <span className="text-red-400">*</span>
+                </label>
                 <input
-                  type="number"
-                  min={1}
+                  type="text"
                   required
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 1)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
+                  placeholder="Contoh: HC-REGULAR"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono uppercase placeholder-slate-600 focus:outline-none transition"
+                />
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Nama Layanan <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Gentlemen Classic Haircut"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Kategori Layanan <span className="text-red-400">*</span>
+                </label>
+                <select
+                  required
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none transition"
+                >
+                  <option value="" disabled>
+                    -- Pilih Kategori Layanan --
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-800/80" />
+
+          {/* Section 2: Operasional */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              2. Operasional
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+              {/* Duration */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Durasi Pengerjaan (Menit) <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <Clock className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Digunakan untuk perhitungan interval slot antrean & booking online.
+                </p>
+              </div>
+
+              {/* Status Operasional Toggle */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Status Ketersediaan Master
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
+                  <span className={isActive ? 'text-emerald-400 font-semibold text-xs' : 'text-slate-400 text-xs'}>
+                    {isActive ? 'Layanan Aktif' : 'Nonaktif'}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                </label>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Layanan aktif dapat dipilih di kasir POS dan booking publik.
+                </p>
+              </div>
+
+              {/* Description */}
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Deskripsi Layanan <span className="text-slate-500 font-normal">(Opsional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Keterangan langkah treatment atau fasilitas yang didapatkan pelanggan..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none transition resize-none"
                 />
               </div>
             </div>
+          </div>
 
-            {/* Default Cost Price */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="block text-slate-300 font-semibold">
+          <div className="border-t border-slate-800/80" />
+
+          {/* Section 3: Biaya Dasar (HPP) */}
+          <div className="space-y-3">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-2">
+              3. Biaya Dasar (HPP)
+            </span>
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1.5">
                 Estimasi Biaya Dasar (Default Cost Price / HPP)
               </label>
               <div className="relative">
-                <Coins className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Coins className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="number"
                   min={0}
                   step="500"
                   value={defaultCostPrice}
                   onChange={(e) => setDefaultCostPrice(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
                 />
               </div>
-              <p className="text-[10px] text-slate-500">
-                Nilai acuan HPP layanan untuk laporan margin kotor (opsional, default 0).
+              <p className="text-[10px] text-slate-500 mt-1">
+                Nilai acuan HPP layanan untuk laporan estimasi margin kotor (opsional, bukan harga jual kasir).
               </p>
             </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <label className="block text-slate-300 font-semibold">Deskripsi Layanan</label>
-            <textarea
-              rows={2}
-              placeholder="Deskripsi langkah atau fasilitas yang didapatkan pelanggan..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-xs resize-none"
-            />
-          </div>
+          <div className="border-t border-slate-800/80" />
 
-          {/* Active Toggle */}
-          <div className="pt-1">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
-              />
-              <span className="text-slate-300 font-medium">
-                Layanan Aktif (Tampil di kasir POS dan pemesanan publik)
+          {/* Section 4: Harga & Ketersediaan Cabang */}
+          <div className="space-y-3">
+            <div>
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                <Store className="w-3.5 h-3.5 text-amber-400" />
+                <span>4. Harga & Ketersediaan Tiap Cabang</span>
               </span>
-            </label>
-          </div>
-
-          {/* Outlet Pricing Matrix */}
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <Store className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Matriks Harga Tiap Cabang Outlet</span>
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Tentukan tarif harga jual dan status ketersediaan pada masing-masing cabang
-                </p>
-              </div>
+              <p className="text-[11px] text-slate-400">
+                Tentukan tarif harga jual riil dan status aktif menu pada masing-masing cabang barbershop.
+              </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden divide-y divide-slate-800/80">
               {outlets.filter((o) => o.is_active !== false).map((o) => {
                 const pState = outletPrices[o.id] || {
                   outlet_id: o.id,
@@ -423,14 +476,18 @@ export function ServiceFormModal({
                 return (
                   <div
                     key={o.id}
-                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-4"
+                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 transition"
                   >
-                    <div className="min-w-0">
-                      <div className="font-semibold text-white truncate">{o.name}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{o.code}</div>
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                          {o.code}
+                        </span>
+                        <span className="font-semibold text-white text-xs truncate">{o.name}</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-400 text-xs font-medium">Rp</span>
                         <input
@@ -439,18 +496,20 @@ export function ServiceFormModal({
                           step="1000"
                           value={pState.selling_price}
                           onChange={(e) => handlePriceChange(o.id, e.target.value)}
-                          className="w-28 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-right text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                          className="w-28 bg-slate-900 border border-slate-800 focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/30 rounded-lg px-2.5 py-1.5 text-right text-white font-mono text-xs focus:outline-none transition"
                         />
                       </div>
 
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-300">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-300 select-none">
                         <input
                           type="checkbox"
                           checked={pState.is_active}
                           onChange={() => handleOutletActiveToggle(o.id)}
-                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                          className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
                         />
-                        <span>Aktif</span>
+                        <span className={pState.is_active ? 'text-emerald-400 font-medium' : 'text-slate-500'}>
+                          {pState.is_active ? 'Aktif' : 'Nonaktif'}
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -459,20 +518,20 @@ export function ServiceFormModal({
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Footer Actions */}
           <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-semibold border border-slate-700/80"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-500/20 transition disabled:opacity-50 text-xs"
+              className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition shadow-xs shadow-amber-500/20 disabled:opacity-40 text-xs"
             >
               {isSubmitting ? (
                 <>
@@ -492,3 +551,4 @@ export function ServiceFormModal({
     </div>
   );
 }
+
