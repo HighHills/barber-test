@@ -107,3 +107,28 @@ BEGIN
   RAISE NOTICE 'SUCCESS: All Phase 3C.5 queue creation assertions passed successfully.';
 END;
 $$;
+
+-- 5. Uji Semantik Posisi Barber vs Non-Barber
+DO $$
+DECLARE
+  v_test_positions TEXT[] := ARRAY['Senior Barber', 'Barber Stylist', 'barber', 'BARBER', 'kapster', 'KAPSTER'];
+  v_invalid_positions TEXT[] := ARRAY['CASHIER', 'Kasir', 'MANAGER', 'ADMIN', 'Gudang'];
+  pos TEXT;
+BEGIN
+  -- Pastikan seluruh variasi barber/kapster lolos kriteria
+  FOREACH pos IN ARRAY v_test_positions LOOP
+    IF NOT (LOWER(pos) LIKE '%barber%' OR LOWER(pos) LIKE '%kapster%') THEN
+      RAISE EXCEPTION 'FAILED: Valid barber position "%" was rejected by pattern', pos;
+    END IF;
+  END LOOP;
+
+  -- Pastikan non-barber (kasir, manager, admin) ditolak
+  FOREACH pos IN ARRAY v_invalid_positions LOOP
+    IF (LOWER(pos) LIKE '%barber%' OR LOWER(pos) LIKE '%kapster%') THEN
+      RAISE EXCEPTION 'FAILED: Non-barber position "%" was unexpectedly accepted', pos;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE 'SUCCESS: Barber position semantics validated (valid positions accepted, non-barber rejected).';
+END;
+$$;

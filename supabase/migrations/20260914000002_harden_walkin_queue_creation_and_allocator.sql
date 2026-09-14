@@ -134,16 +134,24 @@ BEGIN
     SELECT e.id, e.full_name, e.position, e.is_active
     INTO v_barber
     FROM public.employees e
-    JOIN public.employee_outlets eo ON eo.employee_id = e.id AND eo.outlet_id = p_outlet_id
+    JOIN public.employee_outlets eo ON eo.employee_id = e.id AND eo.outlet_id = p_outlet_id AND eo.is_active = TRUE
     WHERE e.id = p_barber_id;
 
     IF NOT FOUND THEN
-      RAISE EXCEPTION 'Barber % tidak ditemukan atau tidak ditugaskan di outlet ini', p_barber_id
+      RAISE EXCEPTION 'Barber % tidak ditemukan atau tidak ditugaskan aktif di outlet ini', p_barber_id
         USING ERRCODE = '22023';
     END IF;
 
     IF NOT v_barber.is_active THEN
       RAISE EXCEPTION 'Barber % sedang tidak aktif', v_barber.full_name
+        USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT (
+      LOWER(v_barber.position) LIKE '%barber%'
+      OR LOWER(v_barber.position) LIKE '%kapster%'
+    ) THEN
+      RAISE EXCEPTION 'Karyawan % bukan merupakan barber/kapster (posisi: %)', v_barber.full_name, v_barber.position
         USING ERRCODE = '22023';
     END IF;
   END IF;
@@ -280,16 +288,24 @@ BEGIN
     SELECT e.id, e.full_name, e.position, e.is_active
     INTO v_barber
     FROM public.employees e
-    JOIN public.employee_outlets eo ON eo.employee_id = e.id AND eo.outlet_id = p_outlet_id
+    JOIN public.employee_outlets eo ON eo.employee_id = e.id AND eo.outlet_id = p_outlet_id AND eo.is_active = TRUE
     WHERE e.id = v_effective_barber_id;
 
     IF NOT FOUND THEN
-      RAISE EXCEPTION 'Barber % tidak ditemukan atau tidak ditugaskan di outlet ini', v_effective_barber_id
+      RAISE EXCEPTION 'Barber % tidak ditemukan atau tidak ditugaskan aktif di outlet ini', v_effective_barber_id
         USING ERRCODE = '22023';
     END IF;
 
     IF NOT v_barber.is_active THEN
       RAISE EXCEPTION 'Barber % sedang tidak aktif', v_barber.full_name
+        USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT (
+      LOWER(v_barber.position) LIKE '%barber%'
+      OR LOWER(v_barber.position) LIKE '%kapster%'
+    ) THEN
+      RAISE EXCEPTION 'Karyawan % bukan merupakan barber/kapster (posisi: %)', v_barber.full_name, v_barber.position
         USING ERRCODE = '22023';
     END IF;
   END IF;
