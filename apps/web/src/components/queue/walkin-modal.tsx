@@ -143,60 +143,28 @@ export function WalkinModal({
         finalCustomerName = custObj?.full_name || 'Pelanggan Terdaftar';
       }
 
-      // 2. Determine today's next queue number for this outlet
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      // 2. Create walk-in queue via Authoritative Backend RPC
+      const { data, error: rpcErr } = await supabase.rpc('create_walk_in_queue', {
+        p_outlet_id: currentOutlet.id,
+        p_customer_id: finalCustomerId,
+        p_barber_id: selectedBarberId ? selectedBarberId : null,
+      });
 
-      const { data: maxQueueData, error: qErr } = await supabase
-        .from('queues')
-        .select('queue_number')
-        .eq('outlet_id', currentOutlet.id)
-        .gte('joined_at', todayStart.toISOString())
-        .order('queue_number', { ascending: false })
-        .limit(1);
-
-      if (qErr) {
-        console.warn('Queue number query warning:', qErr);
+      if (rpcErr) {
+        throw new Error(rpcErr.message || 'Gagal membuat antrean walk-in.');
       }
 
-      const nextQueueNumber = (maxQueueData && maxQueueData.length > 0 && maxQueueData[0]?.queue_number)
-        ? maxQueueData[0].queue_number + 1
-        : 1;
-
-      // 3. Insert new queue row
-      const queuePayload: {
-        queue_number: number;
-        outlet_id: string;
-        customer_id: string | null;
-        barber_id: string | null;
-        status: 'WAITING';
-        joined_at: string;
-      } = {
-        queue_number: nextQueueNumber,
-        outlet_id: currentOutlet.id,
-        customer_id: finalCustomerId,
-        barber_id: selectedBarberId ? selectedBarberId : null,
-        status: 'WAITING',
-        joined_at: new Date().toISOString(),
-      };
-
-      const { data: newQueue, error: insertErr } = await supabase
-        .from('queues')
-        .insert(queuePayload)
-        .select('id, queue_number')
-        .single();
-
-      if (insertErr) {
-        throw new Error(`Gagal membuat antrean: ${insertErr.message}`);
-      }
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      const createdQueueId = result?.queue_id || result?.id;
+      const createdQueueNumber = result?.queue_number ?? 0;
 
       // If a service was pre-selected, save it in local storage session map so POS picks it up when finished
-      if (selectedServiceId && newQueue?.id) {
+      if (selectedServiceId && createdQueueId) {
         try {
           const serviceObj = availableServices.find((s) => s.id === selectedServiceId);
           if (serviceObj) {
             const queueServices = JSON.parse(localStorage.getItem('barber_queue_services') || '{}');
-            queueServices[newQueue.id] = {
+            queueServices[createdQueueId] = {
               service_id: serviceObj.id,
               service_name: serviceObj.name,
               selling_price: serviceObj.selling_price,
@@ -215,7 +183,7 @@ export function WalkinModal({
       setSelectedBarberId('');
       setSelectedServiceId('');
 
-      onSuccess(`Antrean #${nextQueueNumber} untuk ${finalCustomerName} berhasil didaftarkan.`);
+      onSuccess(`Antrean #${createdQueueNumber} untuk ${finalCustomerName} berhasil didaftarkan.`);
       onClose();
     } catch (err: unknown) {
       console.error('Walkin submission error:', err);
