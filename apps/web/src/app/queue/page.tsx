@@ -339,46 +339,36 @@ function QueueManagementContent(): React.JSX.Element {
     }
   };
 
-  // Check-in Appointment into Live Queue
+  // Check-in Appointment into Live Queue via Backend RPC
   const handleCheckInToQueue = async (appointment: AppointmentView) => {
-    if (!currentOutlet) return;
+    if (!currentOutlet) {
+      setFeedback({
+        type: 'error',
+        message: 'Outlet aktif tidak ditemukan.',
+      });
+      return;
+    }
+
     try {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const { data, error } = await supabase.rpc('check_in_appointment_to_queue', {
+        p_appointment_id: appointment.id,
+        p_outlet_id: currentOutlet.id,
+        p_barber_id: appointment.barber_id ?? null,
+      });
 
-      // Get next queue number
-      const { data: maxQ } = await supabase
-        .from('queues')
-        .select('queue_number')
-        .eq('outlet_id', currentOutlet.id)
-        .gte('joined_at', todayStart.toISOString())
-        .order('queue_number', { ascending: false })
-        .limit(1);
+      if (error) {
+        throw new Error(error.message || 'Gagal melakukan check-in janji temu.');
+      }
 
-      const nextNum = maxQ && maxQ.length > 0 && maxQ[0]?.queue_number ? maxQ[0].queue_number + 1 : 1;
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      const createdQueueId = result?.queue_id || result?.id;
+      const createdQueueNumber = result?.queue_number ?? 0;
 
-      // Insert to queues
-      const { data: newQ, error: qErr } = await supabase
-        .from('queues')
-        .insert({
-          queue_number: nextNum,
-          outlet_id: currentOutlet.id,
-          customer_id: appointment.customer_id,
-          appointment_id: appointment.id,
-          barber_id: appointment.barber_id,
-          status: 'WAITING',
-          joined_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-
-      if (qErr) throw qErr;
-
-      // Save service prefill
-      if (newQ?.id && appointment.service_id) {
+      // Save service prefill if queue ID and service exist
+      if (createdQueueId && appointment.service_id) {
         try {
           const queueServices = JSON.parse(localStorage.getItem('barber_queue_services') || '{}');
-          queueServices[newQ.id] = {
+          queueServices[createdQueueId] = {
             service_id: appointment.service_id,
             service_name: appointment.service_name,
             selling_price: 0, // default or catalog price
@@ -389,41 +379,64 @@ function QueueManagementContent(): React.JSX.Element {
         }
       }
 
-      // Update appointment status to ARRIVED
-      const { error: aptErr } = await supabase
-        .from('appointments')
-        .update({ status: 'ARRIVED' })
-        .eq('id', appointment.id);
-
-      if (aptErr) throw aptErr;
-
       await Promise.all([loadQueues(), loadAppointments()]);
       setFeedback({
         type: 'success',
-        message: `Janji temu #${appointment.appointment_number} (${appointment.customer_name}) berhasil check-in sebagai Antrean Kursi #${nextNum}!`,
+        message: `Janji temu #${appointment.appointment_number} (${appointment.customer_name}) berhasil check-in sebagai Antrean Kursi #${createdQueueNumber}!`,
       });
       setActiveTab('BOARD');
     } catch (err: unknown) {
       console.error('Check-in error:', err);
+      // Refresh state so operator sees true state in case of conflict
+      await Promise.all([loadQueues(), loadAppointments()]);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Gagal melakukan check-in janji temu.';
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal melakukan check-in janji temu.',
+        message: errorMessage,
       });
     }
   };
 
-  // Update Appointment Status directly
+  // Update Appointment Status via Backend RPC
   const handleUpdateAppointmentStatus = async (
     appointmentId: string,
     newStatus: AppointmentView['status']
   ) => {
-    try {
-      const { error } = await supabase
-        .from('appointments')
-        .update({ status: newStatus })
-        .eq('id', appointmentId);
+    if (!currentOutlet) {
+      setFeedback({
+        type: 'error',
+        message: 'Outlet aktif tidak ditemukan.',
+      });
+      return;
+    }
 
-      if (error) throw error;
+    // Current appointment must come from loaded state
+    const currentAppointment = appointments.find((a) => a.id === appointmentId);
+    if (!currentAppointment) {
+      setFeedback({
+        type: 'error',
+        message: 'Data janji temu tidak ditemukan.',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('transition_appointment_status', {
+        p_appointment_id: appointmentId,
+        p_outlet_id: currentOutlet.id,
+        p_target_status: newStatus,
+        p_expected_current_status: currentAppointment.status,
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Gagal memperbarui status janji temu.');
+      }
+
       await loadAppointments();
       setFeedback({
         type: 'success',
@@ -431,9 +444,17 @@ function QueueManagementContent(): React.JSX.Element {
       });
     } catch (err: unknown) {
       console.error('Update appointment status error:', err);
+      // Refresh appointment state after failure to show current database state
+      await loadAppointments();
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Gagal memperbarui status janji temu.';
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal memperbarui status janji temu.',
+        message: errorMessage,
       });
     }
   };
