@@ -380,7 +380,7 @@ export function QueueBoard({
 
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => onUpdateStatus(q.id, 'CALLED')}
+                        onClick={() => onUpdateStatus(q.id, 'CALLED', q.barber_id ?? undefined)}
                         className="px-2.5 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
                         title="Panggil pelanggan"
                       >

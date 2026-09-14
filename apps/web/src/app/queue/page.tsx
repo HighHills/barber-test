@@ -273,51 +273,68 @@ function QueueManagementContent(): React.JSX.Element {
     };
   }, [supabase, currentOutlet, loadServices, loadQueues, loadAppointments]);
 
-  // Queue Status Transition Handler
+  // Queue Status Transition Handler via Backend RPC
   const handleUpdateQueueStatus = async (
     queueId: string,
     newStatus: QueueItemView['status'],
     barberId?: string
   ) => {
+    if (!currentOutlet) {
+      setFeedback({
+        type: 'error',
+        message: 'Outlet aktif tidak ditemukan.',
+      });
+      return;
+    }
+
+    // Obtain currentQueue directly from state before mutation
+    const currentQueue = queues.find((q) => q.id === queueId);
+    if (!currentQueue) {
+      setFeedback({
+        type: 'error',
+        message: 'Data antrean tidak ditemukan.',
+      });
+      return;
+    }
+
     try {
-      const nowIso = new Date().toISOString();
-      const updates: any = { status: newStatus };
+      // WAITING -> CALLED must send barberId. If not explicitly passed, use currentQueue.barber_id.
+      // Other transitions normally send null. Backend RPC rejects invalid transitions.
+      const targetBarberId = newStatus === 'CALLED'
+        ? (barberId ?? currentQueue.barber_id ?? null)
+        : null;
 
-      if (barberId) updates.barber_id = barberId;
-      if (newStatus === 'CALLED') updates.called_at = nowIso;
-      if (newStatus === 'IN_SERVICE') updates.started_at = nowIso;
-      if (newStatus === 'COMPLETED') updates.completed_at = nowIso;
-
-      const { error } = await supabase.from('queues').update(updates).eq('id', queueId);
-      if (error) throw error;
-
-      // Also check if this queue was linked to an appointment
-      const queueObj = queues.find((q) => q.id === queueId);
-      if (queueObj?.appointment_id) {
-        let aptStatus: AppointmentView['status'] | null = null;
-        if (newStatus === 'IN_SERVICE') aptStatus = 'IN_SERVICE';
-        if (newStatus === 'COMPLETED') aptStatus = 'COMPLETED';
-        if (newStatus === 'CANCELLED') aptStatus = 'CANCELLED';
-        if (newStatus === 'NO_SHOW') aptStatus = 'NO_SHOW';
-
-        if (aptStatus) {
-          await supabase
-            .from('appointments')
-            .update({ status: aptStatus })
-            .eq('id', queueObj.appointment_id);
+      const { error } = await supabase.rpc(
+        'transition_queue_status',
+        {
+          p_queue_id: queueId,
+          p_outlet_id: currentOutlet.id,
+          p_target_status: newStatus,
+          p_expected_current_status: currentQueue.status,
+          p_barber_id: targetBarberId,
         }
+      );
+
+      if (error) {
+        throw new Error(error.message || 'Gagal memperbarui status antrean.');
       }
 
-      await loadQueues();
+      await Promise.all([loadQueues(), loadAppointments()]);
       setFeedback({
         type: 'success',
         message: `Status antrean berhasil diperbarui menjadi ${newStatus}.`,
       });
     } catch (err: unknown) {
       console.error('Update queue error:', err);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Gagal memperbarui status antrean.';
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal memperbarui status antrean.',
+        message: errorMessage,
       });
     }
   };
