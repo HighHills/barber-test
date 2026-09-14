@@ -175,3 +175,18 @@ WHERE (
 )
 ORDER BY n.nspname, p.proname;
 
+-- 7. Verifikasi Keberadaan Fungsi & Parameter Signature
+SELECT
+  n.nspname AS schema_name,
+  p.proname AS function_name,
+  pg_catalog.pg_get_function_identity_arguments(p.oid) AS arguments,
+  pg_catalog.pg_get_function_result(p.oid) AS return_type
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE (
+  (n.nspname = 'private' AND p.proname = 'allocate_queue_number')
+  OR (n.nspname = 'public' AND p.proname IN ('create_walk_in_queue', 'check_in_appointment_to_queue'))
+)
+ORDER BY n.nspname, p.proname;
+
+
