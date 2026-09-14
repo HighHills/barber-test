@@ -86,12 +86,26 @@ BEGIN
     RAISE EXCEPTION 'FAILED: anon can still INSERT queues';
   END IF;
 
+  -- Assert table UPDATE revoked
+  IF has_table_privilege('authenticated', 'public.queues', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAILED: authenticated can still UPDATE queues';
+  END IF;
+
+  IF has_table_privilege('anon', 'public.queues', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAILED: anon can still UPDATE queues';
+  END IF;
+
   -- Assert table SELECT preserved
   IF NOT has_table_privilege('authenticated', 'public.queues', 'SELECT') THEN
     RAISE EXCEPTION 'FAILED: authenticated cannot SELECT queues';
   END IF;
 
-  -- Assert RPC privileges
+  -- Assert table service_role preserved
+  IF NOT has_table_privilege('service_role', 'public.queues', 'INSERT') THEN
+    RAISE EXCEPTION 'FAILED: service_role lost INSERT on queues';
+  END IF;
+
+  -- Assert RPC privileges for create_walk_in_queue
   IF NOT has_function_privilege('authenticated', 'public.create_walk_in_queue(uuid,uuid,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'FAILED: authenticated cannot EXECUTE create_walk_in_queue';
   END IF;
@@ -100,11 +114,25 @@ BEGIN
     RAISE EXCEPTION 'FAILED: anon can EXECUTE create_walk_in_queue';
   END IF;
 
+  -- Assert RPC privileges for check_in_appointment_to_queue
   IF NOT has_function_privilege('authenticated', 'public.check_in_appointment_to_queue(uuid,uuid,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'FAILED: authenticated cannot EXECUTE check_in_appointment_to_queue';
   END IF;
 
-  RAISE NOTICE 'SUCCESS: All Phase 3C.5 queue creation assertions passed successfully.';
+  IF has_function_privilege('anon', 'public.check_in_appointment_to_queue(uuid,uuid,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAILED: anon can EXECUTE check_in_appointment_to_queue';
+  END IF;
+
+  -- Assert private.allocate_queue_number privileges
+  IF has_function_privilege('anon', 'private.allocate_queue_number(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAILED: anon can EXECUTE private.allocate_queue_number';
+  END IF;
+
+  IF has_function_privilege('authenticated', 'private.allocate_queue_number(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAILED: authenticated can EXECUTE private.allocate_queue_number';
+  END IF;
+
+  RAISE NOTICE 'SUCCESS: All Phase 3C.5 queue creation and privilege assertions passed successfully.';
 END;
 $$;
 
@@ -132,3 +160,18 @@ BEGIN
   RAISE NOTICE 'SUCCESS: Barber position semantics validated (valid positions accepted, non-barber rejected).';
 END;
 $$;
+
+-- 6. Verifikasi search_path Kosong pada Fungsi SECURITY DEFINER
+SELECT
+  n.nspname AS schema_name,
+  p.proname AS function_name,
+  p.prosecdef AS is_security_definer,
+  p.proconfig AS configuration
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE (
+  (n.nspname = 'private' AND p.proname = 'allocate_queue_number')
+  OR (n.nspname = 'public' AND p.proname IN ('create_walk_in_queue', 'check_in_appointment_to_queue'))
+)
+ORDER BY n.nspname, p.proname;
+
