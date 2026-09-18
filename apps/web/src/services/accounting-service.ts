@@ -172,10 +172,33 @@ function parseFinancialPeriodStatus(val: unknown, fieldName: string): 'OPEN' | '
   return str as 'OPEN' | 'CLOSED';
 }
 
-function extractRelation<T>(value: T | T[] | null | undefined): T | null {
-  if (!value) return null;
+function extractStrictSingleRelation<T>(
+  value: T | T[] | null | undefined,
+  relationName: string
+): T {
+  if (value === null || value === undefined) {
+    throw new Error(
+      `Relasi tunggal wajib "${relationName}" bernilai null atau undefined. Integritas relasi gagal (fail closed).`
+    );
+  }
   if (Array.isArray(value)) {
-    return value.length > 0 ? (value[0] ?? null) : null;
+    if (value.length === 1) {
+      const item = value[0];
+      if (item === null || item === undefined) {
+        throw new Error(
+          `Relasi tunggal wajib "${relationName}" berisi elemen null atau undefined. Integritas relasi gagal (fail closed).`
+        );
+      }
+      return item;
+    }
+    throw new Error(
+      `Relasi tunggal wajib "${relationName}" mengembalikan ${value.length} baris (diharapkan tepat 1 baris). Integritas relasi data gagal (fail closed).`
+    );
+  }
+  if (typeof value !== 'object') {
+    throw new Error(
+      `Relasi tunggal wajib "${relationName}" tidak berupa objek data yang valid. Integritas data gagal (fail closed).`
+    );
   }
   return value;
 }
@@ -536,12 +559,10 @@ export const accountingService = {
         `gl_entries[${idx}].credit`
       );
 
-      const jEntry = extractRelation(row.journal_entries);
-      if (!jEntry) {
-        throw new Error(
-          `Data relasi journal_entries hilang pada baris jurnal ID ${id}. Data tidak lengkap.`
-        );
-      }
+      const jEntry = extractStrictSingleRelation<any>(
+        row.journal_entries,
+        `gl_entries[${idx}].journal_entries for line ID ${id}`
+      );
 
       const journal_number = parseStrictAuthoritativeString(
         jEntry.journal_number,
@@ -658,38 +679,39 @@ export const accountingService = {
             )
           : null;
 
-      const registerRel = extractRelation(s.cash_registers);
-      if (!registerRel) {
-        throw new Error(
-          `Relasi cash_registers hilang pada sesi ID ${sessionId}. Rekonsiliasi gagal (fail closed).`
-        );
-      }
+      const registerRel = extractStrictSingleRelation<any>(
+        s.cash_registers,
+        `cash_sessions[${i}].cash_registers for session ID ${sessionId}`
+      );
       const registerName = parseStrictAuthoritativeString(
         registerRel.name,
         `register.name for session ${sessionId}`
       );
 
-      const outletRel = extractRelation(registerRel.outlets);
-      if (!outletRel) {
-        throw new Error(
-          `Relasi outlets hilang pada register ID ${cashRegisterId}. Rekonsiliasi gagal (fail closed).`
-        );
-      }
+      const outletRel = extractStrictSingleRelation<any>(
+        registerRel.outlets,
+        `cash_registers.outlets for register ID ${cashRegisterId}`
+      );
       const outletName = parseStrictAuthoritativeString(
         outletRel.name,
         `outlet.name for session ${sessionId}`
       );
 
-      const openerRel = extractRelation(s.opener);
-      if (!openerRel) {
-        throw new Error(
-          `Data kasir pembuka (profiles) hilang pada sesi ID ${sessionId}. Rekonsiliasi gagal (fail closed).`
-        );
-      }
+      const openerRel = extractStrictSingleRelation<any>(
+        s.opener,
+        `cash_sessions[${i}].opener for session ID ${sessionId}`
+      );
       const cashierName = parseStrictAuthoritativeString(
         openerRel.display_name,
         `opener.display_name for session ${sessionId}`
       );
+
+      if (s.closed_by !== null && s.closer !== null && s.closer !== undefined) {
+        extractStrictSingleRelation(
+          s.closer,
+          `cash_sessions[${i}].closer for session ID ${sessionId}`
+        );
+      }
 
       // Query sales for this cash session
       const { data: salesInSession, error: salesErr } = await supabase
@@ -755,12 +777,10 @@ export const accountingService = {
             p.amount,
             `sale_payments[${pIdx}].amount in sale ${saleId}`
           );
-          const pMethod = extractRelation(p.payment_methods);
-          if (!pMethod) {
-            throw new Error(
-              `Relasi payment_methods hilang pada pembayaran nota ID ${saleId}. Rekonsiliasi kas gagal (fail closed).`
-            );
-          }
+          const pMethod = extractStrictSingleRelation<any>(
+            p.payment_methods,
+            `sale_payments[${pIdx}].payment_methods in sale ID ${saleId}`
+          );
           const code = parseStrictAuthoritativeString(
             pMethod.code,
             `sale_payments[${pIdx}].payment_methods.code in sale ${saleId}`
@@ -880,12 +900,10 @@ export const accountingService = {
 
       let closed_by_name: string | null = null;
       if (closed_by !== null) {
-        const profileRel = extractRelation(row.profiles);
-        if (!profileRel) {
-          throw new Error(
-            `Data relasi profiles hilang pada periode buku tertutup ID ${id} (closed_by: ${closed_by}). Fail closed.`
-          );
-        }
+        const profileRel = extractStrictSingleRelation<any>(
+          row.profiles,
+          `financial_periods[${idx}].profiles for period ID ${id}`
+        );
         closed_by_name = parseStrictAuthoritativeString(
           profileRel.display_name,
           `profiles.display_name for period ${id}`
