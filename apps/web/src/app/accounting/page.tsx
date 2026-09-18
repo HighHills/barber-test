@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePos, PosProvider } from '../../context/pos-context';
 import type {
   FinancialAccountBalanceView,
@@ -11,6 +11,7 @@ import type {
   CashSessionDetailedReconciliation,
   FinancialPeriodView,
 } from '../../types/pos';
+import { accountingService } from '../../services/accounting-service';
 import { PosHeader } from '../../components/pos/pos-header';
 import { IncomeStatementView } from '../../components/accounting/income-statement-view';
 import { BalanceSheetView } from '../../components/accounting/balance-sheet-view';
@@ -39,9 +40,13 @@ function AccountingContent(): React.JSX.Element {
     supabase,
     currentOutlet,
     profile,
-    closeSession,
+    roleCode,
     refreshData,
   } = usePos();
+
+  // Role permissions
+  const canManageCashSession = roleCode === 'OWNER' || roleCode === 'ADMIN';
+  const canClosePeriod = roleCode === 'OWNER' || roleCode === 'ADMIN' || roleCode === 'ACCOUNTING';
 
   const [activeTab, setActiveTab] = useState<
     'INCOME_STATEMENT' | 'BALANCE_SHEET' | 'TRIAL_BALANCE' | 'GENERAL_LEDGER' | 'CASH_RECONCILIATION' | 'PERIODS'
@@ -57,6 +62,9 @@ function AccountingContent(): React.JSX.Element {
 
   // Accounting States
   const [accounts, setAccounts] = useState<FinancialAccountBalanceView[]>([]);
+  const [incomeStatementData, setIncomeStatementData] = useState<IncomeStatementData | null>(null);
+  const [balanceSheetData, setBalanceSheetData] = useState<BalanceSheetData | null>(null);
+  const [trialBalanceRows, setTrialBalanceRows] = useState<TrialBalanceRow[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [ledgerEntries, setLedgerEntries] = useState<GeneralLedgerEntry[]>([]);
   const [periods, setPeriods] = useState<FinancialPeriodView[]>([]);
@@ -68,502 +76,210 @@ function AccountingContent(): React.JSX.Element {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState<boolean>(false);
   const [isStartModalOpen, setIsStartModalOpen] = useState<boolean>(false);
 
+  // Request Generation Tracking for Outlet Race Protection
+  const activeRequestIdRef = useRef<number>(0);
+
+  // Clear ALL outlet-scoped state immediately upon outlet switch
+  const clearOutletScopedState = useCallback(() => {
+    setAccounts([]);
+    setIncomeStatementData(null);
+    setBalanceSheetData(null);
+    setTrialBalanceRows([]);
+    setLedgerEntries([]);
+    setSelectedAccountId('');
+    setActiveReconciliation(null);
+    setHistorySessions([]);
+    setIsCloseModalOpen(false);
+    setIsStartModalOpen(false);
+  }, []);
+
   // 1. Fetch Chart of Accounts & Balances from posted journals
-  const loadFinancialAccounts = useCallback(async () => {
-    if (!currentOutlet) return;
-    try {
-      // A. Fetch all COA
-      const { data: coaData, error: coaErr } = await supabase
-        .from('financial_accounts')
-        .select('id, account_code, account_name, account_type, normal_balance, is_system, is_active')
-        .order('account_code', { ascending: true });
+  const loadFinancialAccounts = useCallback(
+    async (targetOutletId: string, requestId: number) => {
+      try {
+        const result = await accountingService.fetchFinancialAccountsAndBalances(
+          targetOutletId,
+          supabase
+        );
 
-      if (coaErr) throw coaErr;
+        if (activeRequestIdRef.current !== requestId) return;
 
-      // B. Fetch posted journal lines for current outlet
-      const { data: linesData, error: linesErr } = await supabase
-        .from('journal_lines')
-        .select(`
-          financial_account_id,
-          debit,
-          credit,
-          journal_entries!inner(status)
-        `)
-        .eq('journal_entries.status', 'POSTED')
-        .or(`outlet_id.is.null,outlet_id.eq.${currentOutlet.id}`);
+        setAccounts(result.accounts);
+        setIncomeStatementData(result.incomeStatement);
+        setBalanceSheetData(result.balanceSheet);
+        setTrialBalanceRows(result.trialBalanceRows);
 
-      if (linesErr) throw linesErr;
-
-      // Group debits and credits by account_id
-      const sums: Record<string, { debit: number; credit: number }> = {};
-      (linesData || []).forEach((line: any) => {
-        const accId = line.financial_account_id;
-        if (!sums[accId]) sums[accId] = { debit: 0, credit: 0 };
-        sums[accId].debit += Number(line.debit) || 0;
-        sums[accId].credit += Number(line.credit) || 0;
-      });
-
-      const mappedAccounts: FinancialAccountBalanceView[] = (coaData || []).map((acc: any) => {
-        const d = sums[acc.id]?.debit || 0;
-        const c = sums[acc.id]?.credit || 0;
-        let net = 0;
-        if (acc.normal_balance === 'DEBIT') {
-          net = d - c;
-        } else {
-          net = c - d;
-        }
-
-        return {
-          id: acc.id,
-          account_code: acc.account_code,
-          account_name: acc.account_name,
-          account_type: acc.account_type,
-          normal_balance: acc.normal_balance,
-          is_system: acc.is_system,
-          is_active: acc.is_active,
-          total_debit: d,
-          total_credit: c,
-          net_balance: net,
-        };
-      });
-
-      setAccounts(mappedAccounts);
-
-      if (!selectedAccountId && mappedAccounts.length > 0) {
-        // Default to 1000 Cash on Hand
-        const cashAcc = mappedAccounts.find((a) => a.account_code === '1000');
-        setSelectedAccountId(cashAcc ? cashAcc.id : mappedAccounts[0].id);
+        // Auto-select cash account 1000 or first account for GL drilldown
+        setSelectedAccountId((prev) => {
+          if (prev && result.accounts.some((a) => a.id === prev)) {
+            return prev;
+          }
+          const cashAcc = result.accounts.find((a) => a.account_code === '1000');
+          return cashAcc ? cashAcc.id : result.accounts[0]?.id || '';
+        });
+      } catch (err: unknown) {
+        if (activeRequestIdRef.current !== requestId) return;
+        const msg = err instanceof Error ? err.message : 'Gagal memuat data akuntansi.';
+        console.error('Error loading financial accounts:', err);
+        setFeedback({ type: 'error', message: msg });
       }
-    } catch (err: unknown) {
-      console.error('Error loading financial accounts:', err);
-    }
-  }, [supabase, currentOutlet, selectedAccountId]);
+    },
+    [supabase]
+  );
 
   // 2. Fetch General Ledger entries for selected account
-  const loadLedgerEntries = useCallback(async () => {
-    if (!currentOutlet || !selectedAccountId) return;
-    try {
-      const selectedAcc = accounts.find((a) => a.id === selectedAccountId);
+  const loadLedgerEntries = useCallback(
+    async (targetOutletId: string, accId: string, requestId: number) => {
+      if (!targetOutletId || !accId) return;
+      const selectedAcc = accounts.find((a) => a.id === accId);
       if (!selectedAcc) return;
 
-      const { data, error } = await supabase
-        .from('journal_lines')
-        .select(`
-          id,
-          journal_entry_id,
-          debit,
-          credit,
-          description,
-          journal_entries!inner(
-            journal_number,
-            journal_date,
-            reference_type,
-            reference_id,
-            status,
-            created_at
-          )
-        `)
-        .eq('financial_account_id', selectedAccountId)
-        .eq('journal_entries.status', 'POSTED')
-        .or(`outlet_id.is.null,outlet_id.eq.${currentOutlet.id}`)
-        .order('journal_entries(journal_date)', { ascending: true });
+      try {
+        const entries = await accountingService.fetchGeneralLedgerEntries(
+          targetOutletId,
+          accId,
+          selectedAcc.normal_balance,
+          supabase
+        );
 
-      if (error) throw error;
-
-      let running = 0;
-      const mapped: GeneralLedgerEntry[] = (data || []).map((row: any) => {
-        const d = Number(row.debit) || 0;
-        const c = Number(row.credit) || 0;
-        if (selectedAcc.normal_balance === 'DEBIT') {
-          running += d - c;
-        } else {
-          running += c - d;
-        }
-
-        return {
-          id: row.id,
-          journal_entry_id: row.journal_entry_id,
-          journal_date: row.journal_entries?.journal_date || '',
-          journal_number: row.journal_entries?.journal_number || '',
-          reference_type: row.journal_entries?.reference_type || null,
-          reference_id: row.journal_entries?.reference_id || null,
-          description: row.description || row.journal_entries?.journal_number || '',
-          debit: d,
-          credit: c,
-          running_balance: running,
-        };
-      });
-
-      setLedgerEntries(mapped);
-    } catch (err: unknown) {
-      console.error('Error loading general ledger entries:', err);
-    }
-  }, [supabase, currentOutlet, selectedAccountId, accounts]);
+        if (activeRequestIdRef.current !== requestId) return;
+        setLedgerEntries(entries);
+      } catch (err: unknown) {
+        if (activeRequestIdRef.current !== requestId) return;
+        const msg = err instanceof Error ? err.message : 'Gagal memuat mutasi buku besar.';
+        console.error('Error loading general ledger entries:', err);
+        setFeedback({ type: 'error', message: msg });
+      }
+    },
+    [supabase, accounts]
+  );
 
   // 3. Fetch Cash Sessions & Detailed Reconciliation
-  const loadCashSessions = useCallback(async () => {
-    if (!currentOutlet) return;
-    try {
-      // Query cash sessions for registers in this outlet
-      const { data: sessData, error: sessErr } = await supabase
-        .from('cash_sessions')
-        .select(`
-          id,
-          cash_register_id,
-          opened_by,
-          opened_at,
-          opening_balance,
-          closed_by,
-          closed_at,
-          closing_balance,
-          status,
-          cash_registers!inner(id, name, outlet_id),
-          profiles!opened_by(display_name),
-          closer:profiles!closed_by(display_name)
-        `)
-        .eq('cash_registers.outlet_id', currentOutlet.id)
-        .order('opened_at', { ascending: false })
-        .limit(20);
+  const loadCashSessions = useCallback(
+    async (targetOutletId: string, requestId: number) => {
+      try {
+        const sessions = await accountingService.fetchCashSessionsWithReconciliation(
+          targetOutletId,
+          supabase
+        );
 
-      if (sessErr) throw sessErr;
+        if (activeRequestIdRef.current !== requestId) return;
 
-      // For each session, compute cash sales, refunds, and expected balance
-      const mapped: CashSessionDetailedReconciliation[] = [];
-
-      for (const s of sessData || []) {
-        // Query sales in this session
-        const { data: salesInSession } = await supabase
-          .from('sales')
-          .select(`
-            id,
-            total_amount,
-            status,
-            sale_payments(
-              payment_method_id,
-              amount,
-              payment_methods(code, name, type)
-            )
-          `)
-          .eq('cash_session_id', s.id)
-          .eq('status', 'COMPLETED');
-
-        let cashSales = 0;
-        let totalSales = 0;
-        let salesCount = salesInSession ? salesInSession.length : 0;
-        const nonCashMap: Record<string, { name: string; total: number; count: number }> = {};
-
-        (salesInSession || []).forEach((sale: any) => {
-          totalSales += Number(sale.total_amount) || 0;
-          (sale.sale_payments || []).forEach((p: any) => {
-            const pMethodCode = p.payment_methods?.code || 'OTHER';
-            const pMethodName = p.payment_methods?.name || 'Metode Lain';
-            const amt = Number(p.amount) || 0;
-
-            if (pMethodCode === 'CASH') {
-              cashSales += amt;
-            } else {
-              if (!nonCashMap[pMethodCode]) {
-                nonCashMap[pMethodCode] = { name: pMethodName, total: 0, count: 0 };
-              }
-              nonCashMap[pMethodCode].total += amt;
-              nonCashMap[pMethodCode].count += 1;
-            }
-          });
-        });
-
-        // Query cash refunds during this session
-        let cashRefunds = 0;
-        // In schema, cash payments for refunds can be calculated
-        const opening = Number(s.opening_balance) || 0;
-        const cashPayouts = 0; // Payouts usually via journal
-        const expected = opening + cashSales - cashRefunds - cashPayouts;
-        const actual = s.closing_balance !== null ? Number(s.closing_balance) : null;
-        const discrepancy = actual !== null ? actual - expected : null;
-
-        const registerName = (Array.isArray(s.cash_registers)
-          ? s.cash_registers[0]?.name
-          : (s.cash_registers as any)?.name) || 'Register';
-        const cashierName = (Array.isArray(s.profiles)
-          ? s.profiles[0]?.display_name
-          : (s.profiles as any)?.display_name) || 'Kasir';
-
-        mapped.push({
-          session_id: s.id,
-          register_id: s.cash_register_id,
-          register_name: registerName,
-          outlet_id: currentOutlet.id,
-          outlet_name: currentOutlet.name,
-          cashier_id: s.opened_by,
-          cashier_name: cashierName,
-          opened_at: s.opened_at,
-          closed_at: s.closed_at,
-          opening_balance: opening,
-          cash_sales: cashSales,
-          cash_refunds: cashRefunds,
-          cash_payouts: cashPayouts,
-          expected_cash_balance: expected,
-          actual_closing_balance: actual,
-          discrepancy: discrepancy,
-          total_sales_count: salesCount,
-          total_sales_amount: totalSales,
-          non_cash_payments: Object.entries(nonCashMap).map(([code, val]) => ({
-            method_code: code,
-            method_name: val.name,
-            total_amount: val.total,
-            transaction_count: val.count,
-          })),
-          status: s.status,
-        });
+        setHistorySessions(sessions);
+        const active = sessions.find((s) => s.status === 'OPEN');
+        setActiveReconciliation(active || null);
+      } catch (err: unknown) {
+        if (activeRequestIdRef.current !== requestId) return;
+        const msg = err instanceof Error ? err.message : 'Gagal memuat rekonsiliasi sesi kasir.';
+        console.error('Error loading cash sessions:', err);
+        setFeedback({ type: 'error', message: msg });
       }
-
-      setHistorySessions(mapped);
-
-      // Find if there is an active session
-      const active = mapped.find((s) => s.status === 'OPEN');
-      setActiveReconciliation(active || null);
-    } catch (err: unknown) {
-      console.error('Error loading cash sessions:', err);
-    }
-  }, [supabase, currentOutlet]);
+    },
+    [supabase]
+  );
 
   // 4. Fetch Financial Periods
   const loadFinancialPeriods = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('financial_periods')
-        .select(`
-          id,
-          period_start,
-          period_end,
-          status,
-          closed_at,
-          profiles!closed_by(display_name),
-          created_at
-        `)
-        .order('period_start', { ascending: false });
-
-      if (error) throw error;
-
-      const mapped: FinancialPeriodView[] = (data || []).map((p: any) => ({
-        id: p.id,
-        period_start: p.period_start,
-        period_end: p.period_end,
-        status: p.status,
-        closed_at: p.closed_at,
-        closed_by_name: p.profiles?.display_name || null,
-        created_at: p.created_at,
-      }));
-
-      setPeriods(mapped);
+      const periodList = await accountingService.fetchFinancialPeriods(supabase);
+      setPeriods(periodList);
     } catch (err: unknown) {
-      console.error('Error loading periods:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal memuat periode buku akuntansi.';
+      console.error('Error loading financial periods:', err);
+      setFeedback({ type: 'error', message: msg });
     }
   }, [supabase]);
 
-  // Initial Data Load
+  // Initial Data Load & Outlet Switch Isolation
   useEffect(() => {
-    let isMounted = true;
-    const init = async () => {
-      setIsLoading(true);
-      await Promise.all([
-        loadFinancialAccounts(),
-        loadCashSessions(),
-        loadFinancialPeriods(),
-      ]);
-      if (isMounted) setIsLoading(false);
-    };
+    if (!currentOutlet?.id) {
+      clearOutletScopedState();
+      return;
+    }
 
-    init();
-  }, [loadFinancialAccounts, loadCashSessions, loadFinancialPeriods]);
+    clearOutletScopedState();
+    const requestId = ++activeRequestIdRef.current;
+    setIsLoading(true);
+
+    Promise.all([
+      loadFinancialAccounts(currentOutlet.id, requestId),
+      loadCashSessions(currentOutlet.id, requestId),
+      loadFinancialPeriods(),
+    ]).finally(() => {
+      if (activeRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
+    });
+  }, [
+    currentOutlet?.id,
+    clearOutletScopedState,
+    loadFinancialAccounts,
+    loadCashSessions,
+    loadFinancialPeriods,
+  ]);
 
   // Load ledger entries whenever selected account changes
   useEffect(() => {
-    if (selectedAccountId) {
-      loadLedgerEntries();
+    if (currentOutlet?.id && selectedAccountId) {
+      loadLedgerEntries(currentOutlet.id, selectedAccountId, activeRequestIdRef.current);
     }
-  }, [selectedAccountId, loadLedgerEntries]);
+  }, [currentOutlet?.id, selectedAccountId, loadLedgerEntries]);
 
   // Refresh All Data
   const handleRefresh = async () => {
+    if (!currentOutlet) return;
     setIsRefreshing(true);
+    const requestId = ++activeRequestIdRef.current;
     await Promise.all([
-      loadFinancialAccounts(),
-      loadLedgerEntries(),
-      loadCashSessions(),
+      loadFinancialAccounts(currentOutlet.id, requestId),
+      loadCashSessions(currentOutlet.id, requestId),
       loadFinancialPeriods(),
       refreshData(),
     ]);
+    if (selectedAccountId) {
+      await loadLedgerEntries(currentOutlet.id, selectedAccountId, requestId);
+    }
     setIsRefreshing(false);
   };
 
-  // 5. Compute Trial Balance Rows
-  const trialBalanceRows: TrialBalanceRow[] = useMemo(() => {
-    return accounts.map((acc) => {
-      let debitAmount = 0;
-      let creditAmount = 0;
-
-      if (acc.normal_balance === 'DEBIT') {
-        const net = acc.total_debit - acc.total_credit;
-        if (net >= 0) {
-          debitAmount = net;
-        } else {
-          creditAmount = Math.abs(net);
-        }
-      } else {
-        const net = acc.total_credit - acc.total_debit;
-        if (net >= 0) {
-          creditAmount = net;
-        } else {
-          debitAmount = Math.abs(net);
-        }
-      }
-
-      return {
-        account_code: acc.account_code,
-        account_name: acc.account_name,
-        account_type: acc.account_type,
-        normal_balance: acc.normal_balance,
-        debit_amount: debitAmount,
-        credit_amount: creditAmount,
-      };
-    });
-  }, [accounts]);
-
-  // 6. Compute Income Statement Data
-  const incomeStatementData: IncomeStatementData = useMemo(() => {
-    const srvRevAcc = accounts.find((a) => a.account_code === '4000');
-    const prdRevAcc = accounts.find((a) => a.account_code === '4100');
-    const contraRevAcc = accounts.find((a) => a.account_code === '5600');
-    const cogsAcc = accounts.find((a) => a.account_code === '5000');
-    const commExpAcc = accounts.find((a) => a.account_code === '5100');
-    const lossExpAcc = accounts.find((a) => a.account_code === '5700');
-    const feeExpAcc = accounts.find((a) => a.account_code === '5500');
-
-    const serviceRev = srvRevAcc ? Math.max(0, srvRevAcc.net_balance) : 0;
-    const productRev = prdRevAcc ? Math.max(0, prdRevAcc.net_balance) : 0;
-    const grossRev = serviceRev + productRev;
-    const discountsRefunds = contraRevAcc ? Math.max(0, contraRevAcc.net_balance) : 0;
-    const netRev = Math.max(0, grossRev - discountsRefunds);
-
-    const cogs = cogsAcc ? Math.max(0, cogsAcc.net_balance) : 0;
-    const grossProfit = netRev - cogs;
-    const grossMarginPercent = netRev > 0 ? (grossProfit / netRev) * 100 : 0;
-
-    const commExp = commExpAcc ? Math.max(0, commExpAcc.net_balance) : 0;
-    const lossExp = lossExpAcc ? Math.max(0, lossExpAcc.net_balance) : 0;
-    const feeExp = feeExpAcc ? Math.max(0, feeExpAcc.net_balance) : 0;
-
-    // Other operational expenses: all accounts with account_type === 'EXPENSE' excluding 5000 (COGS), 5100 (Comm), 5500 (Fee), 5600 (Contra Rev), 5700 (Loss)
-    let otherExp = 0;
-    accounts
-      .filter(
-        (a) =>
-          a.account_type === 'EXPENSE' &&
-          !['5000', '5100', '5500', '5600', '5700'].includes(a.account_code)
-      )
-      .forEach((a) => {
-        otherExp += Math.max(0, a.net_balance);
-      });
-
-    const totalOperatingExpenses = commExp + lossExp + feeExp + otherExp;
-    const netOperatingProfit = grossProfit - totalOperatingExpenses;
-    const netProfitMarginPercent = netRev > 0 ? (netOperatingProfit / netRev) * 100 : 0;
-
-    return {
-      service_revenue: serviceRev,
-      product_revenue: productRev,
-      gross_revenue: grossRev,
-      discounts_refunds: discountsRefunds,
-      net_revenue: netRev,
-      cogs: cogs,
-      gross_profit: grossProfit,
-      gross_margin_percent: grossMarginPercent,
-      commission_expense: commExp,
-      inventory_loss_expense: lossExp,
-      merchant_fee_expense: feeExp,
-      other_operating_expenses: otherExp,
-      total_operating_expenses: totalOperatingExpenses,
-      net_operating_profit: netOperatingProfit,
-      net_profit_margin_percent: netProfitMarginPercent,
-    };
-  }, [accounts]);
-
-  // 7. Compute Balance Sheet Data
-  const balanceSheetData: BalanceSheetData = useMemo(() => {
-    // Current Assets (1000, 1100, 1200, 1300)
-    const assetAccounts = accounts.filter((a) => a.account_type === 'ASSET');
-    const currentAssets = assetAccounts.map((a) => ({
-      code: a.account_code,
-      name: a.account_name,
-      amount: Math.max(0, a.net_balance),
-    }));
-    const totalAssets = currentAssets.reduce((sum, a) => sum + a.amount, 0);
-
-    // Current Liabilities (2000, 2100, 2200)
-    const liabAccounts = accounts.filter((a) => a.account_type === 'LIABILITY');
-    const currentLiabilities = liabAccounts.map((a) => ({
-      code: a.account_code,
-      name: a.account_name,
-      amount: Math.max(0, a.net_balance),
-    }));
-    const totalLiabilities = currentLiabilities.reduce((sum, l) => sum + l.amount, 0);
-
-    // Equity (3000)
-    const equityAccounts = accounts.filter((a) => a.account_type === 'EQUITY');
-    const equityList = equityAccounts.map((a) => ({
-      code: a.account_code,
-      name: a.account_name,
-      amount: Math.max(0, a.net_balance),
-    }));
-    const baseEquity = equityList.reduce((sum, e) => sum + e.amount, 0);
-
-    // Current period earnings from P&L
-    const currentEarnings = incomeStatementData.net_operating_profit;
-    const totalEquity = baseEquity + currentEarnings;
-
-    const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
-    const discrepancy = Math.abs(totalAssets - totalLiabilitiesAndEquity);
-    const isBalanced = discrepancy < 0.05;
-
-    return {
-      current_assets: currentAssets,
-      total_assets: totalAssets,
-      current_liabilities: currentLiabilities,
-      total_liabilities: totalLiabilities,
-      equity: equityList,
-      current_period_earnings: currentEarnings,
-      total_equity: totalEquity,
-      total_liabilities_and_equity: totalLiabilitiesAndEquity,
-      is_balanced: isBalanced,
-      discrepancy: discrepancy,
-    };
-  }, [accounts, incomeStatementData]);
-
-  // Execute Close Session with actual closing balance
+  // Execute Close Session with actual closing balance via authoritative RPC
   const handleExecuteCloseSession = async (actualClosingBalance: number, _notes?: string) => {
-    const res = await closeSession(actualClosingBalance);
-    if (res.success) {
-      await loadCashSessions();
+    if (!canManageCashSession) {
+      return { success: false, error: 'Akses ditolak: Hanya OWNER atau ADMIN yang dapat menutup sesi kasir.' };
     }
-    return res;
+    if (!activeReconciliation) {
+      return { success: false, error: 'Tidak ada sesi kasir aktif yang dapat ditutup.' };
+    }
+
+    try {
+      await accountingService.closeCashSession(
+        activeReconciliation.session_id,
+        actualClosingBalance,
+        supabase
+      );
+      if (currentOutlet) {
+        await loadCashSessions(currentOutlet.id, activeRequestIdRef.current);
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menutup sesi kasir.';
+      return { success: false, error: msg };
+    }
   };
 
-  // Close Financial Period
+  // Close Financial Period via authoritative production RPC: close_financial_period
   const handleClosePeriod = async (periodId: string) => {
     if (!profile) return;
+    if (!canClosePeriod) {
+      setFeedback({
+        type: 'error',
+        message: 'Akses ditolak: Anda tidak memiliki izin untuk mengunci periode buku.',
+      });
+      return;
+    }
     setIsClosingPeriod(true);
     try {
-      const { error } = await supabase
-        .from('financial_periods')
-        .update({
-          status: 'CLOSED',
-          closed_at: new Date().toISOString(),
-          closed_by: profile.id,
-        })
-        .eq('id', periodId);
-
-      if (error) throw error;
-
+      await accountingService.closeFinancialPeriod(periodId, supabase);
       setFeedback({
         type: 'success',
         message: 'Periode akuntansi berhasil ditutup dan dikunci secara permanen.',
@@ -730,20 +446,32 @@ function AccountingContent(): React.JSX.Element {
           <div>
             {/* Tab 1: Income Statement */}
             {activeTab === 'INCOME_STATEMENT' && (
-              <IncomeStatementView
-                data={incomeStatementData}
-                periodLabel={`Kumulatif s/d ${todayStr}`}
-                outletName={currentOutlet?.name || 'Seluruh Cabang'}
-              />
+              incomeStatementData ? (
+                <IncomeStatementView
+                  data={incomeStatementData}
+                  periodLabel={`Kumulatif s/d ${todayStr}`}
+                  outletName={currentOutlet?.name || 'Seluruh Cabang'}
+                />
+              ) : (
+                <div className="py-12 text-center text-xs text-slate-500 font-medium">
+                  Data Laba Rugi belum tersedia atau belum dimuat.
+                </div>
+              )
             )}
 
             {/* Tab 2: Balance Sheet */}
             {activeTab === 'BALANCE_SHEET' && (
-              <BalanceSheetView
-                data={balanceSheetData}
-                asOfDate={todayStr}
-                outletName={currentOutlet?.name || 'Seluruh Cabang'}
-              />
+              balanceSheetData ? (
+                <BalanceSheetView
+                  data={balanceSheetData}
+                  asOfDate={todayStr}
+                  outletName={currentOutlet?.name || 'Seluruh Cabang'}
+                />
+              ) : (
+                <div className="py-12 text-center text-xs text-slate-500 font-medium">
+                  Data Neraca Keuangan belum tersedia atau belum dimuat.
+                </div>
+              )
             )}
 
             {/* Tab 3: Trial Balance */}
@@ -772,8 +500,13 @@ function AccountingContent(): React.JSX.Element {
               <CashReconciliationPanel
                 activeReconciliation={activeReconciliation}
                 historySessions={historySessions}
-                onOpenCloseModal={() => setIsCloseModalOpen(true)}
-                onOpenStartModal={() => setIsStartModalOpen(true)}
+                canManageCashSession={canManageCashSession}
+                onOpenCloseModal={() => {
+                  if (canManageCashSession) setIsCloseModalOpen(true);
+                }}
+                onOpenStartModal={() => {
+                  if (canManageCashSession) setIsStartModalOpen(true);
+                }}
               />
             )}
 
@@ -791,13 +524,15 @@ function AccountingContent(): React.JSX.Element {
 
       {/* MODALS */}
       {/* 1. Close Session Detailed Reconciliation Modal */}
-      {activeReconciliation && isCloseModalOpen && (
+      {activeReconciliation && isCloseModalOpen && canManageCashSession && (
         <CloseSessionReconcileModal
           isOpen={isCloseModalOpen}
           onClose={() => setIsCloseModalOpen(false)}
           onSuccess={(msg) => {
             setFeedback({ type: 'success', message: msg });
-            loadCashSessions();
+            if (currentOutlet) {
+              loadCashSessions(currentOutlet.id, activeRequestIdRef.current);
+            }
           }}
           reconciliation={activeReconciliation}
           onExecuteClose={handleExecuteCloseSession}
@@ -805,12 +540,14 @@ function AccountingContent(): React.JSX.Element {
       )}
 
       {/* 2. Open Session Drawer Modal */}
-      {isStartModalOpen && (
+      {isStartModalOpen && canManageCashSession && (
         <CashSessionModal
           mode="OPEN"
           onClose={() => {
             setIsStartModalOpen(false);
-            loadCashSessions();
+            if (currentOutlet) {
+              loadCashSessions(currentOutlet.id, activeRequestIdRef.current);
+            }
           }}
         />
       )}

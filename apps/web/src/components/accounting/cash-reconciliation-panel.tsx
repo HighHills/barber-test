@@ -17,6 +17,7 @@ interface CashReconciliationPanelProps {
   historySessions: CashSessionDetailedReconciliation[];
   onOpenCloseModal: () => void;
   onOpenStartModal: () => void;
+  canManageCashSession: boolean;
 }
 
 export function CashReconciliationPanel({
@@ -24,6 +25,7 @@ export function CashReconciliationPanel({
   historySessions,
   onOpenCloseModal,
   onOpenStartModal,
+  canManageCashSession,
 }: CashReconciliationPanelProps): React.JSX.Element {
   return (
     <div className="space-y-6">
@@ -52,13 +54,15 @@ export function CashReconciliationPanel({
               </div>
             </div>
 
-            <button
-              onClick={onOpenCloseModal}
-              className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Tutup Shift & Rekonsiliasi Kasir</span>
-            </button>
+            {canManageCashSession && (
+              <button
+                onClick={onOpenCloseModal}
+                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Tutup Shift & Rekonsiliasi Kasir</span>
+              </button>
+            )}
           </div>
 
           {/* Cash Flow Breakdown Grid */}
@@ -166,13 +170,15 @@ export function CashReconciliationPanel({
             </div>
           </div>
 
-          <button
-            onClick={onOpenStartModal}
-            className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
-          >
-            <Unlock className="w-4 h-4 text-amber-400" />
-            <span>Buka Sesi Kasir Baru</span>
-          </button>
+          {canManageCashSession && (
+            <button
+              onClick={onOpenStartModal}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
+            >
+              <Unlock className="w-4 h-4 text-amber-400" />
+              <span>Buka Sesi Kasir Baru</span>
+            </button>
+          )}
         </div>
       )}
 

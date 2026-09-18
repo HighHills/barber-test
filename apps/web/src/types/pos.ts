@@ -517,8 +517,36 @@ export interface FinancialPeriodView {
   period_end: string;
   status: 'OPEN' | 'CLOSED';
   closed_at: string | null;
+  closed_by: string | null;
   closed_by_name?: string | null;
   created_at: string;
+}
+
+export interface OpenCashSessionResult {
+  success: boolean;
+  session_id: string;
+  cash_register_id: string;
+  opened_by: string;
+  opened_at: string;
+  opening_balance: number;
+  status: 'OPEN';
+}
+
+export interface CloseCashSessionResult {
+  success: boolean;
+  session_id: string;
+  closed_by: string;
+  closed_at: string;
+  closing_balance: number;
+  status: 'CLOSED';
+}
+
+export interface CloseFinancialPeriodResult {
+  success: boolean;
+  period_id: string;
+  status: 'CLOSED';
+  closed_by: string;
+  closed_at: string;
 }
 
 // --- CRM, MEMBERSHIP & LOYALTY TYPES ---

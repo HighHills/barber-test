@@ -12,6 +12,7 @@ import type {
   CashSession,
   BusinessSettings,
 } from '../types/pos';
+import { accountingService } from '../services/accounting-service';
 
 interface PosContextType {
   supabase: ReturnType<typeof createClient>;
@@ -381,20 +382,20 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
     }
 
     try {
-      const { data, error: insertErr } = await supabase
-        .from('cash_sessions')
-        .insert({
-          cash_register_id: cashRegister.id,
-          opened_by: profile.id,
-          opening_balance: openingBalance,
-          status: 'OPEN',
-        })
-        .select()
-        .single();
+      const result = await accountingService.openCashSession(
+        cashRegister.id,
+        openingBalance,
+        supabase
+      );
 
-      if (insertErr) throw insertErr;
-
-      setActiveSession(data as CashSession);
+      setActiveSession({
+        id: result.session_id,
+        cash_register_id: result.cash_register_id,
+        opened_by: result.opened_by,
+        opened_at: result.opened_at,
+        opening_balance: result.opening_balance,
+        status: 'OPEN',
+      });
       return { success: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal membuka sesi kasir';
@@ -409,17 +410,11 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
     }
 
     try {
-      const { error: updateErr } = await supabase
-        .from('cash_sessions')
-        .update({
-          closed_by: profile.id,
-          closed_at: new Date().toISOString(),
-          closing_balance: closingBalance,
-          status: 'CLOSED',
-        })
-        .eq('id', activeSession.id);
-
-      if (updateErr) throw updateErr;
+      await accountingService.closeCashSession(
+        activeSession.id,
+        closingBalance,
+        supabase
+      );
 
       setActiveSession(null);
       return { success: true };
