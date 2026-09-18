@@ -14,6 +14,7 @@ import { CommissionRulesManager } from '../../components/commissions/commission-
 import { BarberPerformanceRank } from '../../components/commissions/barber-performance-rank';
 import { CommissionRuleModal } from '../../components/commissions/commission-rule-modal';
 import { CommissionPayoutModal } from '../../components/commissions/commission-payout-modal';
+import { commissionRuleService } from '../../services/commission-rule-service';
 import {
   Coins,
   Sliders,
@@ -272,12 +273,7 @@ function CommissionsContent(): React.JSX.Element {
   // Rule Handlers
   const handleToggleRuleActive = async (ruleId: string, currentActive: boolean) => {
     try {
-      const { error } = await supabase
-        .from('commission_rules')
-        .update({ is_active: !currentActive })
-        .eq('id', ruleId);
-
-      if (error) throw error;
+      await commissionRuleService.setActive(ruleId, !currentActive, supabase);
       await loadRules();
       setFeedback({
         type: 'success',
@@ -295,8 +291,7 @@ function CommissionsContent(): React.JSX.Element {
   const handleDeleteRule = async (ruleId: string) => {
     if (!confirm('Apakah Anda yakin ingin menghapus aturan komisi ini?')) return;
     try {
-      const { error } = await supabase.from('commission_rules').delete().eq('id', ruleId);
-      if (error) throw error;
+      await commissionRuleService.deleteRule(ruleId, supabase);
       await loadRules();
       setFeedback({
         type: 'success',

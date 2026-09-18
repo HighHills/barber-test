@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem } from '../../types/pos';
+import { commissionRuleService } from '../../services/commission-rule-service';
 import {
   X,
   Sliders,
@@ -84,24 +85,24 @@ export function CommissionRuleModal({
         throw new Error('Nominal komisi tetap tidak boleh negatif.');
       }
 
-      const payload = {
-        employee_id: selectedBarberId || null,
-        service_id: targetType === 'SERVICE' ? (selectedServiceId || null) : null,
-        product_id: targetType === 'PRODUCT' ? (selectedProductId || null) : null,
-        outlet_id: isOutletSpecific && currentOutlet ? currentOutlet.id : null,
-        commission_type: commissionType,
-        commission_rate: rateVal,
-        fixed_amount: fixedVal,
-        effective_from: effectiveFrom,
-        effective_until: effectiveUntil || null,
-        priority: calculatedTier,
-        is_active: true,
-      };
-
-      const { error: insertErr } = await supabase.from('commission_rules').insert(payload);
-      if (insertErr) {
-        throw new Error(`Gagal menyimpan aturan komisi: ${insertErr.message}`);
-      }
+      await commissionRuleService.saveRule(
+        {
+          rule_id: null,
+          employee_id: selectedBarberId || null,
+          service_id: targetType === 'SERVICE' ? (selectedServiceId || null) : null,
+          product_id: targetType === 'PRODUCT' ? (selectedProductId || null) : null,
+          outlet_id: isOutletSpecific && currentOutlet ? currentOutlet.id : null,
+          commission_type: commissionType,
+          commission_rate: commissionType === 'PERCENTAGE' ? rateVal : null,
+          fixed_amount: commissionType === 'FIXED' ? fixedVal : null,
+          effective_from: effectiveFrom,
+          effective_until: effectiveUntil || null,
+          priority: calculatedTier,
+          is_active: true,
+          tier_config: null,
+        },
+        supabase
+      );
 
       onSuccess(`Aturan komisi (Tier ${calculatedTier}) berhasil ditambahkan dan langsung aktif.`);
       onClose();
