@@ -678,6 +678,16 @@ export const accountingService = {
               `cash_sessions[${i}].closing_balance`
             )
           : null;
+      const closedBy =
+        s.closed_by !== null && s.closed_by !== undefined
+          ? parseStrictAuthoritativeUUID(s.closed_by, `cash_sessions[${i}].closed_by`)
+          : null;
+
+      if (status === 'CLOSED' && closedBy === null) {
+        throw new Error(
+          `Sesi kasir tertutup ID ${sessionId} tidak memiliki data penutup (closed_by null). Fail closed.`
+        );
+      }
 
       const registerRel = extractStrictSingleRelation<any>(
         s.cash_registers,
@@ -706,10 +716,28 @@ export const accountingService = {
         `opener.display_name for session ${sessionId}`
       );
 
-      if (s.closed_by !== null && s.closer !== null && s.closer !== undefined) {
-        extractStrictSingleRelation(
+      if (closedBy !== null) {
+        if (s.closer === null || s.closer === undefined) {
+          throw new Error(
+            `Data relasi profil penutup laci (closer) hilang pada sesi kasir ID ${sessionId} (closed_by: ${closedBy}). Fail closed.`
+          );
+        }
+        const closerRel = extractStrictSingleRelation<any>(
           s.closer,
           `cash_sessions[${i}].closer for session ID ${sessionId}`
+        );
+        const closerId = parseStrictAuthoritativeUUID(
+          closerRel.id,
+          `cash_sessions[${i}].closer.id for session ID ${sessionId}`
+        );
+        if (closerId !== closedBy) {
+          throw new Error(
+            `Integritas relasi closer tidak sah pada sesi ID ${sessionId}: ID profil relasi (${closerId}) tidak cocok dengan closed_by (${closedBy}). Fail closed.`
+          );
+        }
+        parseStrictAuthoritativeString(
+          closerRel.display_name,
+          `cash_sessions[${i}].closer.display_name for session ID ${sessionId}`
         );
       }
 
