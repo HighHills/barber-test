@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem, CustomerOption } from '../../types/pos';
+import { customerService } from '../../services/customer-service';
 import {
   X,
   UserPlus,
@@ -109,28 +110,15 @@ export function WalkinModal({
 
       // 1. Resolve customer
       if (customerMode === 'NEW') {
-        if (!newCustomerName.trim()) {
-          throw new Error('Nama pelanggan wajib diisi.');
-        }
-
         const phone = newCustomerPhone.trim() || '080000000000';
-        const customerCode = `CUST-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
-        const { data: newCust, error: custErr } = await supabase
-          .from('customers')
-          .insert({
-            customer_code: customerCode,
+        const newCust = await customerService.createCustomer(
+          {
             full_name: newCustomerName.trim(),
             phone: phone,
-            is_active: true,
-          })
-          .select('id, full_name')
-          .single();
-
-        if (custErr) {
-          console.error('Customer insert error:', custErr);
-          throw new Error(`Gagal mendaftarkan pelanggan: ${custErr.message}`);
-        }
+          },
+          supabase
+        );
 
         finalCustomerId = newCust.id;
         finalCustomerName = newCust.full_name;

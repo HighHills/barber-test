@@ -13,6 +13,7 @@ import { ReceiptModal } from './receipt-modal';
 import { CashSessionModal } from './cash-session-modal';
 import { CustomerSelectModal } from './customer-select-modal';
 import { CustomerFormModal } from '../crm/customer-form-modal';
+import { customerService } from '../../services/customer-service';
 import { LoginDialog } from '../auth/login-dialog';
 import { Loader2, CheckCircle2, X } from 'lucide-react';
 
@@ -364,32 +365,23 @@ export function PosScreen(): React.JSX.Element {
           barbers={barbers}
           onClose={() => setIsCustomerFormOpen(false)}
           onSubmit={async (formData) => {
-            const customerCode = `CUST-${Math.floor(100000 + Math.random() * 900000)}`;
-            const defaultTier = tiers.find((t) => t.code === 'BRONZE') || tiers[0];
-            const { data: newCust, error } = await supabase
-              .from('customers')
-              .insert({
-                customer_code: customerCode,
-                full_name: formData.full_name,
-                phone: formData.phone,
-                email: formData.email || null,
-                gender: formData.gender || null,
-                date_of_birth: formData.date_of_birth || null,
-                tier_id: formData.tier_id || defaultTier?.id || null,
-                preferred_barber_id: formData.preferred_barber_id || null,
-                haircut_preferences: formData.haircut_preferences || {},
-                current_loyalty_points: 0,
-                lifetime_loyalty_points: 0,
-              })
-              .select('*')
-              .single();
+            try {
+              const defaultTier = tiers.find((t) => t.code === 'BRONZE') || tiers[0];
+              const newCust = await customerService.createCustomer(
+                {
+                  full_name: formData.full_name,
+                  phone: formData.phone,
+                  email: formData.email || null,
+                  gender: formData.gender || null,
+                  date_of_birth: formData.date_of_birth || null,
+                  tier_id: formData.tier_id || defaultTier?.id || null,
+                  preferred_barber_id: formData.preferred_barber_id || null,
+                  haircut_preferences: formData.haircut_preferences || {},
+                  notes: formData.notes || null,
+                },
+                supabase
+              );
 
-            if (error) {
-              alert('Gagal mendaftarkan pelanggan: ' + error.message);
-              return;
-            }
-
-            if (newCust) {
               const tierObj = tiers.find((t) => t.id === newCust.tier_id) || defaultTier;
               setSelectedCustomer({
                 id: newCust.id,
@@ -415,6 +407,9 @@ export function PosScreen(): React.JSX.Element {
               });
               setIsCustomerFormOpen(false);
               setQueueHandOffNotice(`Pelanggan baru ${newCust.full_name} berhasil didaftarkan dan dipilih!`);
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Gagal mendaftarkan pelanggan';
+              alert('Gagal mendaftarkan pelanggan: ' + msg);
             }
           }}
           isSubmitting={false}

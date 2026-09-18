@@ -15,6 +15,7 @@ import { CustomerDetailModal } from '../../components/crm/customer-detail-modal'
 import { CustomerFormModal } from '../../components/crm/customer-form-modal';
 import { TierConfigPanel } from '../../components/crm/tier-config-panel';
 import { LoyaltyLedgerView } from '../../components/crm/loyalty-ledger-view';
+import { customerService } from '../../services/customer-service';
 import {
   RefreshCw,
   Users,
@@ -592,29 +593,27 @@ function CustomersContent(): React.JSX.Element {
           message: `Data pelanggan "${formData.full_name}" berhasil diperbarui!`,
         });
       } else {
-        // Create new customer
-        const customerCode = `CUST-${Math.floor(100000 + Math.random() * 900000)}`;
+        // Create new customer via authoritative RPC create_customer
         const defaultTier = tiers.find((t) => t.code === 'BRONZE') || tiers[0];
 
-        const { error } = await supabase.from('customers').insert({
-          customer_code: customerCode,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          email: formData.email || null,
-          gender: formData.gender || null,
-          date_of_birth: formData.date_of_birth || null,
-          tier_id: formData.tier_id || defaultTier?.id || null,
-          preferred_barber_id: formData.preferred_barber_id || null,
-          haircut_preferences: formData.haircut_preferences || {},
-          current_loyalty_points: 0,
-          lifetime_loyalty_points: 0,
-        });
-
-        if (error) throw error;
+        const newCust = await customerService.createCustomer(
+          {
+            full_name: formData.full_name,
+            phone: formData.phone,
+            email: formData.email || null,
+            gender: formData.gender || null,
+            date_of_birth: formData.date_of_birth || null,
+            tier_id: formData.tier_id || defaultTier?.id || null,
+            preferred_barber_id: formData.preferred_barber_id || null,
+            haircut_preferences: formData.haircut_preferences || {},
+            notes: formData.notes || null,
+          },
+          supabase
+        );
 
         setNotification({
           type: 'SUCCESS',
-          message: `Pelanggan baru "${formData.full_name}" (${customerCode}) berhasil didaftarkan!`,
+          message: `Pelanggan baru "${newCust.full_name}" (${newCust.customer_code}) berhasil didaftarkan!`,
         });
       }
 
