@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import { formatCurrency, formatDateTime } from '../../lib/formatters';
 import type { ProcessRefundResult } from '../../types/pos';
+import { refundService } from '../../services/refund-service';
 import {
   RotateCcw,
   X,
@@ -58,6 +59,16 @@ export function RefundSaleModal({
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('AUTO');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState<string>('');
+
+  // Generate fresh idempotency key on each modal open session (preserved across retries)
+  useEffect(() => {
+    if (isOpen) {
+      setIdempotencyKey(crypto.randomUUID());
+    } else {
+      setIdempotencyKey('');
+    }
+  }, [isOpen]);
 
   // Initialize refundable items when sale changes
   useEffect(() => {
@@ -226,92 +237,35 @@ export function RefundSaleModal({
     setErrorMsg(null);
 
     try {
-      // 1. Generate unique refund number
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-      const refundNumber = `REF-${dateStr}-${randomSuffix}`;
-
-      // 2. Insert into sale_refunds
-      const { data: refundRecord, error: refundErr } = await supabase
-        .from('sale_refunds')
-        .insert({
-          refund_number: refundNumber,
-          sale_id: sale.id,
-          outlet_id: sale.outlet_id,
-          refund_type: refundMode,
-          subtotal: calculations.subtotal,
-          discount_amount: calculations.discount,
-          tax_amount: calculations.tax,
-          total_amount: calculations.totalRefund,
-          reason: reason.trim(),
-          status: 'COMPLETED',
-          created_by: profile.id,
-        })
-        .select('id')
-        .single();
-
-      if (refundErr || !refundRecord) {
-        throw new Error(refundErr?.message || 'Gagal membuat dokumen pengembalian dana.');
+      // 1. Ensure a stable idempotency key for this refund session
+      const currentKey = idempotencyKey || crypto.randomUUID();
+      if (!idempotencyKey) {
+        setIdempotencyKey(currentKey);
       }
 
-      const refundId = refundRecord.id;
-
-      // 3. Insert items into sale_refund_items
-      const refundItemsToInsert = itemsState
+      // 2. Prepare pure business intent items for atomic RPC
+      const refundItems = itemsState
         .filter((i) => i.selected && i.quantity > 0)
-        .map((i) => {
-          const itemGross = i.unit_price * i.quantity;
-          const itemDisc = i.unit_discount * i.quantity;
-          const itemTax = i.unit_tax * i.quantity;
-          const netItemRefund = Math.max(0, Math.round((itemGross - itemDisc + itemTax) * 100) / 100);
+        .map((i) => ({
+          sale_item_id: i.sale_item_id,
+          quantity: i.quantity,
+          return_to_inventory: i.return_to_inventory,
+        }));
 
-          return {
-            refund_id: refundId,
-            sale_item_id: i.sale_item_id,
-            quantity: i.quantity,
-            refund_amount: netItemRefund,
-            tax_amount: Math.round(itemTax * 100) / 100,
-            cost_price: i.cost_price,
-            return_to_inventory: i.return_to_inventory,
-            reason: reason.trim(),
-          };
-        });
+      // 3. Process refund atomically via authoritative RPC process_pos_refund
+      const result = await refundService.processRefund(
+        {
+          sale_id: sale.id,
+          idempotency_key: currentKey,
+          items: refundItems,
+          reason: reason.trim(),
+          processed_by: profile.id,
+          payment_method_id:
+            selectedPaymentMethodId === 'AUTO' ? null : selectedPaymentMethodId,
+        },
+        supabase
+      );
 
-      const { error: itemsErr } = await supabase
-        .from('sale_refund_items')
-        .insert(refundItemsToInsert);
-
-      if (itemsErr) {
-        throw new Error(itemsErr.message);
-      }
-
-      // 4. Optionally insert custom refund payment method if not AUTO
-      if (selectedPaymentMethodId !== 'AUTO') {
-        const { error: pmErr } = await supabase
-          .from('sale_refund_payments')
-          .insert({
-            refund_id: refundId,
-            payment_method_id: selectedPaymentMethodId,
-            amount: calculations.totalRefund,
-          });
-
-        if (pmErr) {
-          throw new Error(pmErr.message);
-        }
-      }
-
-      // 5. Call database atomic RPC process_sale_refund
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('process_sale_refund', {
-        p_refund_id: refundId,
-        p_processed_by: profile.id,
-      });
-
-      if (rpcErr) {
-        throw new Error(rpcErr.message);
-      }
-
-      const result = rpcData as ProcessRefundResult;
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
