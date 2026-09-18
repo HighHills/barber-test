@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem, CustomerOption } from '../../types/pos';
 import { customerService } from '../../services/customer-service';
+import { appointmentService } from '../../services/appointment-service';
 import {
   X,
   Calendar,
@@ -33,7 +34,7 @@ export function AppointmentModal({
   prefilledDate,
   prefilledBarberId,
 }: AppointmentModalProps): React.JSX.Element | null {
-  const { supabase, currentOutlet, profile, barbers } = usePos();
+  const { supabase, currentOutlet, barbers } = usePos();
 
   // Mode: Customer
   const [customerMode, setCustomerMode] = useState<'NEW' | 'EXISTING'>('NEW');
@@ -193,41 +194,28 @@ export function AppointmentModal({
         );
       }
 
-      // 3. Insert Appointment with PostgreSQL GIST Exclusion Guard
-      const aptNumber = `APT-${bookingDate.replace(/-/g, '')}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      const { data: newApt, error: insertErr } = await supabase
-        .from('appointments')
-        .insert({
-          appointment_number: aptNumber,
+      // 3. Create Appointment via Authoritative Backend RPC
+      const newApt = await appointmentService.createAppointment(
+        {
           customer_id: finalCustomerId,
           outlet_id: currentOutlet.id,
           service_id: selectedServiceId,
           barber_id: selectedBarberId,
           start_at: startDateTime.toISOString(),
-          end_at: endDateTime.toISOString(),
-          status: 'CONFIRMED',
           notes: notes.trim() || null,
-          created_by: profile?.id || null,
-        })
-        .select('id, appointment_number')
-        .single();
+          status: 'CONFIRMED',
+        },
+        supabase
+      );
 
-      if (insertErr) {
-        // Intercept PostgreSQL exclusion constraint violation (code 23P01)
-        if (
-          insertErr.code === '23P01' ||
-          insertErr.message?.includes('exclude_overlapping_barber_appointment')
-        ) {
-          throw new Error(
-            'Tabrakan Jadwal: Barber ini sudah terisi janji temu lain di jam yang sama (Proteksi DB GIST). Silakan pilih jam atau barber lain.'
-          );
-        }
-        throw new Error(`Gagal menyimpan janji temu: ${insertErr.message}`);
-      }
+      // Extract server-derived end time for user feedback
+      const serverEndDate = new Date(newApt.end_at);
+      const serverEndTime = !isNaN(serverEndDate.getTime())
+        ? serverEndDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : formattedEndTime;
 
       onSuccess(
-        `Janji Temu #${newApt.appointment_number} untuk ${finalCustomerName} pada jam ${bookingTime} - ${formattedEndTime} berhasil dikonfirmasi.`
+        `Janji Temu #${newApt.appointment_number} untuk ${newApt.customer_name || finalCustomerName} pada jam ${bookingTime} - ${serverEndTime} berhasil dikonfirmasi.`
       );
       onClose();
     } catch (err: unknown) {
