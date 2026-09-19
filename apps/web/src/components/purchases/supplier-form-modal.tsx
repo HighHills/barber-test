@@ -100,34 +100,8 @@ export function SupplierFormModal({
       });
 
       if (error) {
-        // Fallback: Direct table insert/update if RPC not yet run in client
-        if (supplier?.id) {
-          const { error: updErr } = await supabase
-            .from('suppliers')
-            .update({
-              code: code.trim(),
-              name: name.trim(),
-              phone: phone.trim() || null,
-              email: email.trim() || null,
-              address: address.trim() || null,
-              is_active: isActive,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', supplier.id);
-          if (updErr) throw updErr;
-        } else {
-          const { error: insErr } = await supabase
-            .from('suppliers')
-            .insert({
-              code: code.trim(),
-              name: name.trim(),
-              phone: phone.trim() || null,
-              email: email.trim() || null,
-              address: address.trim() || null,
-              is_active: isActive,
-            });
-          if (insErr) throw insErr;
-        }
+        setErrorMsg(error.message);
+        return;
       }
 
       setSuccessMsg('Data supplier berhasil disimpan!');
@@ -150,13 +124,9 @@ export function SupplierFormModal({
 
     try {
       const { error } = await supabase.rpc('delete_supplier', { p_id: supplier.id });
+
       if (error) {
-        // Fallback: direct delete or deactivate
-        const { error: delErr } = await supabase
-          .from('suppliers')
-          .update({ is_active: false })
-          .eq('id', supplier.id);
-        if (delErr) throw delErr;
+        throw new Error(error.message);
       }
 
       onSuccess();
