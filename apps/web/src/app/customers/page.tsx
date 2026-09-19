@@ -634,19 +634,16 @@ function CustomersContent(): React.JSX.Element {
   const handleUpdateTier = async (tierData: CustomerTierView) => {
     setIsUpdatingTier(true);
     try {
-      const { error } = await supabase
-        .from('customer_tiers')
-        .update({
-          name: tierData.name,
-          min_spending: tierData.min_spending,
-          min_visits: tierData.min_visits,
-          discount_percent_service: tierData.discount_percent_service,
-          discount_percent_product: tierData.discount_percent_product,
-          points_multiplier: tierData.points_multiplier,
-          color_hex: tierData.color_hex,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', tierData.id);
+      const { error } = await supabase.rpc('save_customer_tier', {
+        p_tier_id: tierData.id,
+        p_name: tierData.name.trim(),
+        p_min_spending: tierData.min_spending,
+        p_min_visits: tierData.min_visits,
+        p_discount_percent_service: tierData.discount_percent_service,
+        p_discount_percent_product: tierData.discount_percent_product,
+        p_points_multiplier: tierData.points_multiplier,
+        p_color_hex: tierData.color_hex.trim(),
+      });
 
       if (error) throw error;
 
@@ -662,6 +659,7 @@ function CustomersContent(): React.JSX.Element {
         type: 'ERROR',
         message: 'Gagal memperbarui aturan tier: ' + err.message,
       });
+      throw err;
     } finally {
       setIsUpdatingTier(false);
     }

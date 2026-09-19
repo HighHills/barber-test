@@ -14,6 +14,7 @@ import {
   Loader2,
   Save,
   X,
+  AlertCircle,
 } from 'lucide-react';
 
 interface TierConfigPanelProps {
@@ -30,6 +31,7 @@ export function TierConfigPanel({
   isUpdating,
 }: TierConfigPanelProps): React.JSX.Element {
   const [editingTier, setEditingTier] = useState<CustomerTierView | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const getTierIcon = (iconName: string) => {
     switch (iconName) {
@@ -44,11 +46,79 @@ export function TierConfigPanel({
     }
   };
 
+  const handleStartEdit = (tier: CustomerTierView) => {
+    setFormError(null);
+    setEditingTier({ ...tier });
+  };
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTier) return;
-    await onUpdateTier(editingTier);
-    setEditingTier(null);
+    setFormError(null);
+
+    const trimmedName = editingTier.name.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 80) {
+      setFormError('Nama tingkatan harus antara 2 dan 80 karakter.');
+      return;
+    }
+
+    if (isNaN(editingTier.min_spending) || editingTier.min_spending < 0) {
+      setFormError('Minimal belanja tidak boleh bernilai negatif.');
+      return;
+    }
+
+    if (
+      isNaN(editingTier.min_visits) ||
+      editingTier.min_visits < 0 ||
+      !Number.isInteger(editingTier.min_visits)
+    ) {
+      setFormError('Minimal kunjungan harus berupa bilangan bulat >= 0.');
+      return;
+    }
+
+    if (
+      isNaN(editingTier.discount_percent_service) ||
+      editingTier.discount_percent_service < 0 ||
+      editingTier.discount_percent_service > 100
+    ) {
+      setFormError('Diskon jasa pangkas harus antara 0% dan 100%.');
+      return;
+    }
+
+    if (
+      isNaN(editingTier.discount_percent_product) ||
+      editingTier.discount_percent_product < 0 ||
+      editingTier.discount_percent_product > 100
+    ) {
+      setFormError('Diskon produk retail harus antara 0% dan 100%.');
+      return;
+    }
+
+    if (
+      isNaN(editingTier.points_multiplier) ||
+      editingTier.points_multiplier <= 0 ||
+      editingTier.points_multiplier > 100
+    ) {
+      setFormError('Multiplier poin harus lebih besar dari 0 dan maksimal 100.');
+      return;
+    }
+
+    const trimmedHex = editingTier.color_hex.trim().toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(trimmedHex)) {
+      setFormError('Format warna hex tidak valid. Gunakan format #RRGGBB (contoh: #F59E0B).');
+      return;
+    }
+
+    try {
+      await onUpdateTier({
+        ...editingTier,
+        name: trimmedName,
+        color_hex: trimmedHex,
+      });
+      setEditingTier(null);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Gagal menyimpan konfigurasi tier');
+    }
   };
 
   return (
@@ -110,7 +180,7 @@ export function TierConfigPanel({
                   </div>
 
                   <button
-                    onClick={() => setEditingTier({ ...tier })}
+                    onClick={() => handleStartEdit(tier)}
                     className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                     title="Edit Aturan Tier"
                   >
@@ -187,9 +257,12 @@ export function TierConfigPanel({
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-black text-slate-900 text-sm">
-                Konfigurasi Tingkatan: {editingTier.name}
-              </h3>
+              <div>
+                <h3 className="font-black text-slate-900 text-sm">
+                  Konfigurasi Tingkatan: {editingTier.name}
+                </h3>
+                <span className="text-[10px] font-mono text-slate-400">Kode: {editingTier.code} (Permanen)</span>
+              </div>
               <button
                 onClick={() => setEditingTier(null)}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer"
@@ -197,6 +270,13 @@ export function TierConfigPanel({
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {formError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{formError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
               <div>
