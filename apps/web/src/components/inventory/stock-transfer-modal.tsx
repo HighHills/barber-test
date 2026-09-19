@@ -29,11 +29,11 @@ export function StockTransferModal({
   onClose,
   onSuccess,
 }: StockTransferModalProps): React.JSX.Element | null {
-  const { supabase, currentOutlet, availableOutlets, profile } = usePos();
+  const { supabase, currentOutlet, availableOutlets } = usePos();
 
   const [toOutletId, setToOutletId] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [transferQuantity, setTransferQuantity] = useState<number>(1);
+  const [transferQuantity, setTransferQuantity] = useState<string>('1');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -56,7 +56,7 @@ export function StockTransferModal({
       setSelectedProductId(productsList[0].id);
     }
 
-    setTransferQuantity(1);
+    setTransferQuantity('1');
     setErrorMsg(null);
   }, [preselectedProduct, productsList, destinationOutlets, isOpen]);
 
@@ -68,12 +68,20 @@ export function StockTransferModal({
     return destinationOutlets.find((o) => o.id === toOutletId) || null;
   }, [destinationOutlets, toOutletId]);
 
-  if (!isOpen || !currentOutlet) return null;
+  const parsedTransferQty = useMemo(() => {
+    const raw = transferQuantity.trim();
+    if (raw === '') return null;
+    const val = Number(raw);
+    if (!Number.isFinite(val) || !Number.isInteger(val) || val <= 0) return null;
+    return val;
+  }, [transferQuantity]);
 
   const totalTransferValue = useMemo(() => {
-    if (!activeProduct) return 0;
-    return Math.round(transferQuantity * activeProduct.average_cost * 100) / 100;
-  }, [transferQuantity, activeProduct]);
+    if (!activeProduct || parsedTransferQty === null) return 0;
+    return Math.round(parsedTransferQty * activeProduct.average_cost * 100) / 100;
+  }, [parsedTransferQty, activeProduct]);
+
+  if (!isOpen || !currentOutlet) return null;
 
   const handleSubmit = async () => {
     if (!toOutletId) {
@@ -86,20 +94,17 @@ export function StockTransferModal({
       return;
     }
 
-    if (transferQuantity <= 0) {
-      setErrorMsg('Kuantitas transfer harus lebih besar dari 0.');
+    const rawQty = transferQuantity.trim();
+    const qty = Number(rawQty);
+    if (rawQty === '' || !Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+      setErrorMsg('Kuantitas transfer harus berupa bilangan bulat yang valid dan lebih besar dari 0.');
       return;
     }
 
-    if (transferQuantity > activeProduct.quantity) {
+    if (qty > activeProduct.quantity) {
       setErrorMsg(
         `Kuantitas melebihi stok yang tersedia (${activeProduct.quantity} unit).`
       );
-      return;
-    }
-
-    if (!profile?.id) {
-      setErrorMsg('Profil pengguna aktif tidak ditemukan.');
       return;
     }
 
@@ -107,50 +112,15 @@ export function StockTransferModal({
     setErrorMsg(null);
 
     try {
-      // 1. Generate unique transfer number
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-      const transferNumber = `TRF-${dateStr}-${randomSuffix}`;
-
-      // 2. Insert into stock_transfers
-      const { data: transferRecord, error: transferErr } = await supabase
-        .from('stock_transfers')
-        .insert({
-          transfer_number: transferNumber,
-          from_outlet_id: currentOutlet.id,
-          to_outlet_id: toOutletId,
-          status: 'REQUESTED',
-          requested_by: profile.id,
-        })
-        .select('id')
-        .single();
-
-      if (transferErr || !transferRecord) {
-        throw new Error(transferErr?.message || 'Gagal membuat dokumen transfer barang.');
-      }
-
-      const transferId = transferRecord.id;
-
-      // 3. Insert into stock_transfer_items
-      const { error: itemErr } = await supabase
-        .from('stock_transfer_items')
-        .insert({
-          transfer_id: transferId,
-          product_id: activeProduct.id,
-          quantity: transferQuantity,
-          unit_cost: activeProduct.average_cost,
-        });
-
-      if (itemErr) {
-        throw new Error(itemErr.message);
-      }
-
-      // 4. Call atomic RPC process_stock_transfer
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('process_stock_transfer', {
-        p_transfer_id: transferId,
-        p_approved_by: profile.id,
-      });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        'create_and_process_stock_transfer',
+        {
+          p_from_outlet_id: currentOutlet.id,
+          p_to_outlet_id: toOutletId,
+          p_product_id: activeProduct.id,
+          p_quantity: qty,
+        }
+      );
 
       if (rpcErr) {
         throw new Error(rpcErr.message);
@@ -253,7 +223,7 @@ export function StockTransferModal({
               value={selectedProductId}
               onChange={(e) => {
                 setSelectedProductId(e.target.value);
-                setTransferQuantity(1);
+                setTransferQuantity('1');
                 setErrorMsg(null);
               }}
               disabled={isSubmitting}
@@ -289,12 +259,12 @@ export function StockTransferModal({
                   type="number"
                   min={1}
                   max={activeProduct.quantity}
+                  step={1}
                   value={transferQuantity}
-                  onChange={(e) =>
-                    setTransferQuantity(
-                      Math.max(1, Math.min(activeProduct.quantity, parseInt(e.target.value) || 1))
-                    )
-                  }
+                  onChange={(e) => {
+                    setTransferQuantity(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
                   disabled={isSubmitting || activeProduct.quantity <= 0}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
@@ -348,8 +318,9 @@ export function StockTransferModal({
               isSubmitting ||
               !toOutletId ||
               !activeProduct ||
-              transferQuantity <= 0 ||
-              transferQuantity > (activeProduct?.quantity || 0)
+              parsedTransferQty === null ||
+              parsedTransferQty <= 0 ||
+              parsedTransferQty > (activeProduct?.quantity || 0)
             }
             className="inline-flex items-center gap-2 px-6 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 rounded-xl shadow-xs transition-colors"
           >

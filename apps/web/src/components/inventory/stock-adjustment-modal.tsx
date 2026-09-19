@@ -38,10 +38,10 @@ export function StockAdjustmentModal({
   onClose,
   onSuccess,
 }: StockAdjustmentModalProps): React.JSX.Element | null {
-  const { supabase, currentOutlet, profile } = usePos();
+  const { supabase, currentOutlet } = usePos();
 
   const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [physicalQuantity, setPhysicalQuantity] = useState<number>(0);
+  const [physicalQuantity, setPhysicalQuantity] = useState<string>('0');
   const [reason, setReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,10 +49,10 @@ export function StockAdjustmentModal({
   useEffect(() => {
     if (preselectedProduct) {
       setSelectedProductId(preselectedProduct.id);
-      setPhysicalQuantity(preselectedProduct.quantity);
+      setPhysicalQuantity(String(preselectedProduct.quantity));
     } else if (productsList.length > 0) {
       setSelectedProductId(productsList[0].id);
-      setPhysicalQuantity(productsList[0].quantity);
+      setPhysicalQuantity(String(productsList[0].quantity));
     }
     setReason('');
     setErrorMsg(null);
@@ -66,20 +66,28 @@ export function StockAdjustmentModal({
     setSelectedProductId(prodId);
     const p = productsList.find((item) => item.id === prodId);
     if (p) {
-      setPhysicalQuantity(p.quantity);
+      setPhysicalQuantity(String(p.quantity));
     }
     setErrorMsg(null);
   };
 
+  const parsedPhysicalQty = useMemo(() => {
+    const raw = physicalQuantity.trim();
+    if (raw === '') return null;
+    const val = Number(raw);
+    if (!Number.isFinite(val) || !Number.isInteger(val) || val < 0) return null;
+    return val;
+  }, [physicalQuantity]);
+
   const delta = useMemo(() => {
-    if (!activeProduct) return 0;
-    return physicalQuantity - activeProduct.quantity;
-  }, [physicalQuantity, activeProduct]);
+    if (!activeProduct || parsedPhysicalQty === null) return 0;
+    return parsedPhysicalQty - activeProduct.quantity;
+  }, [parsedPhysicalQty, activeProduct]);
 
   const financialImpact = useMemo(() => {
-    if (!activeProduct) return 0;
+    if (!activeProduct || parsedPhysicalQty === null) return 0;
     return Math.round(Math.abs(delta) * activeProduct.average_cost * 100) / 100;
-  }, [delta, activeProduct]);
+  }, [delta, activeProduct, parsedPhysicalQty]);
 
   if (!isOpen || !currentOutlet) return null;
 
@@ -89,18 +97,31 @@ export function StockAdjustmentModal({
       return;
     }
 
-    if (delta === 0) {
+    const rawQty = physicalQuantity.trim();
+    const parsedQty = Number(rawQty);
+    if (
+      rawQty === '' ||
+      !Number.isFinite(parsedQty) ||
+      !Number.isInteger(parsedQty) ||
+      parsedQty < 0
+    ) {
+      setErrorMsg('Hitungan fisik riil harus berupa bilangan bulat yang valid dan tidak boleh negatif.');
+      return;
+    }
+
+    if (parsedQty === activeProduct.quantity) {
       setErrorMsg('Kuantitas fisik riil sama dengan stok sistem. Tidak ada selisih yang disesuaikan.');
       return;
     }
 
-    if (!reason.trim()) {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
       setErrorMsg('Alasan penyesuaian stok (stok opname) wajib diisi.');
       return;
     }
 
-    if (!profile?.id) {
-      setErrorMsg('Profil pengguna aktif tidak ditemukan.');
+    if (trimmedReason.length > 500) {
+      setErrorMsg('Alasan penyesuaian stok maksimal 500 karakter.');
       return;
     }
 
@@ -108,53 +129,15 @@ export function StockAdjustmentModal({
     setErrorMsg(null);
 
     try {
-      // 1. Generate unique adjustment number
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-      const adjustmentNumber = `ADJ-${dateStr}-${randomSuffix}`;
-
-      // 2. Insert into stock_adjustments
-      const { data: adjRecord, error: adjErr } = await supabase
-        .from('stock_adjustments')
-        .insert({
-          adjustment_number: adjustmentNumber,
-          outlet_id: currentOutlet.id,
-          reason: reason.trim(),
-          status: 'DRAFT',
-          created_by: profile.id,
-        })
-        .select('id')
-        .single();
-
-      if (adjErr || !adjRecord) {
-        throw new Error(adjErr?.message || 'Gagal membuat dokumen penyesuaian stok.');
-      }
-
-      const adjId = adjRecord.id;
-
-      // 3. Insert into stock_adjustment_items
-      const { error: itemErr } = await supabase
-        .from('stock_adjustment_items')
-        .insert({
-          adjustment_id: adjId,
-          product_id: activeProduct.id,
-          quantity_before: activeProduct.quantity,
-          quantity_after: physicalQuantity,
-          quantity_delta: delta,
-          unit_cost: activeProduct.average_cost,
-          reason: reason.trim(),
-        });
-
-      if (itemErr) {
-        throw new Error(itemErr.message);
-      }
-
-      // 4. Call atomic RPC process_stock_adjustment
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('process_stock_adjustment', {
-        p_adjustment_id: adjId,
-        p_approved_by: profile.id,
-      });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        'create_and_process_stock_adjustment',
+        {
+          p_outlet_id: currentOutlet.id,
+          p_product_id: activeProduct.id,
+          p_quantity_after: parsedQty,
+          p_reason: trimmedReason,
+        }
+      );
 
       if (rpcErr) {
         throw new Error(rpcErr.message);
@@ -246,7 +229,10 @@ export function StockAdjustmentModal({
                   min={0}
                   step={1}
                   value={physicalQuantity}
-                  onChange={(e) => setPhysicalQuantity(Math.max(0, parseInt(e.target.value) || 0))}
+                  onChange={(e) => {
+                    setPhysicalQuantity(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
                   disabled={isSubmitting}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
@@ -359,7 +345,7 @@ export function StockAdjustmentModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting || delta === 0 || !reason.trim()}
+            disabled={isSubmitting || parsedPhysicalQty === null || delta === 0 || !reason.trim()}
             className="inline-flex items-center gap-2 px-6 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 rounded-xl shadow-xs transition-colors"
           >
             {isSubmitting ? (
