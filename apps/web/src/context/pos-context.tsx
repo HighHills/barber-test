@@ -266,46 +266,47 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
 
   const loadRegisterAndSession = async (outletId: string) => {
     try {
-      // Find or get first register for this outlet
-      const { data: registers, error: regErr } = await supabase
-        .from('cash_registers')
-        .select('id, outlet_id, name, is_active')
-        .eq('outlet_id', outletId)
-        .eq('is_active', true)
-        .limit(1);
+      const { data: ensuredRegister, error: registerErr } = await supabase.rpc(
+        'ensure_cash_register',
+        {
+          p_outlet_id: outletId,
+        }
+      );
 
-      if (regErr) {
-        console.warn('Register fetch notice:', regErr.message);
+      if (registerErr) {
+        console.error('Error ensuring cash register:', registerErr.message);
+        setError(registerErr.message);
+        setCashRegister(null);
+        setActiveSession(null);
+        return;
       }
 
-      let activeReg = (registers && registers.length > 0) ? (registers[0] as CashRegister) : null;
+      const rawReg = (
+        Array.isArray(ensuredRegister) ? ensuredRegister[0] : ensuredRegister
+      ) as Record<string, unknown> | null;
 
-      // Auto-create register if not exists
-      // NOTE: RLS cash_registers_insert requires is_owner_or_admin().
-      // Non-owner cashiers will get RLS denial here — surface it clearly
-      // instead of failing silently. OWNER must seed register per outlet.
+      let activeReg: CashRegister | null = null;
+      if (
+        rawReg &&
+        typeof rawReg === 'object' &&
+        typeof rawReg.id === 'string' &&
+        typeof rawReg.outlet_id === 'string' &&
+        typeof rawReg.name === 'string' &&
+        typeof rawReg.is_active === 'boolean'
+      ) {
+        activeReg = {
+          id: rawReg.id,
+          outlet_id: rawReg.outlet_id,
+          name: rawReg.name,
+          is_active: rawReg.is_active,
+        };
+      }
+
       if (!activeReg) {
-        const { data: createdReg, error: createErr } = await supabase
-          .from('cash_registers')
-          .insert({
-            outlet_id: outletId,
-            name: 'Kasir Utama 01',
-            is_active: true,
-          })
-          .select()
-          .maybeSingle();
-
-        if (!createErr && createdReg) {
-          activeReg = createdReg as CashRegister;
-        } else if (createErr) {
-          setError(
-            `Register laci kasir belum ada di outlet ini dan tidak dapat dibuat otomatis (${createErr.message}). Minta OWNER/ADMIN untuk membuatkan register atau jalankan supabase/seed_operational_data.sql.`
-          );
-        } else {
-          setError(
-            'Register laci kasir belum terdaftar pada outlet ini. Minta OWNER/ADMIN untuk membuatkan register atau jalankan supabase/seed_operational_data.sql.'
-          );
-        }
+        setError('Format data cash register dari server tidak valid.');
+        setCashRegister(null);
+        setActiveSession(null);
+        return;
       }
 
       setCashRegister(activeReg);
@@ -328,8 +329,11 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       } else {
         setActiveSession(null);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error fetching register/session:', err);
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan memuat register kasir');
+      setCashRegister(null);
+      setActiveSession(null);
     }
   };
 
