@@ -27,6 +27,7 @@ export type BookingErrorKind =
   | 'OUTSIDE_HOURS' // Kondisi A: Jam mulai di luar jam operasional
   | 'BARBER_UNAVAILABLE' // Kondisi C: Barber yang dipilih bentrok / sudah ada janji
   | 'SLOT_TAKEN' // Kondisi D: Slot waktu habis / baru saja diambil orang lain (race condition)
+  | 'RATE_LIMIT' // Terlalu banyak reservasi dalam waktu singkat
   | 'GENERAL_ERROR';
 
 export interface BookingErrorInfo {
@@ -399,22 +400,53 @@ export function formatBookingError(
 
 
 
-  // --- CLEAN GENERAL FALLBACK (Without RPC/database technical jargon) ---
-  let cleanMsg = rawMsg;
+  // --- RATE LIMIT ---
   if (
-    cleanMsg.includes('PGRST') ||
-    cleanMsg.includes('RPC') ||
-    cleanMsg.includes('postgres') ||
-    cleanMsg.includes('relation') ||
-    cleanMsg.includes('query')
+    rawError?.code === 'RATE_LIMIT' ||
+    lower.includes('rate_limit') ||
+    lower.includes('beberapa reservasi dalam waktu singkat') ||
+    lower.includes('terlalu banyak')
   ) {
-    cleanMsg = 'Terjadi kendala koneksi saat menghubungi sistem barbershop. Silakan periksa kembali data Anda atau coba beberapa saat lagi.';
+    return {
+      kind: 'RATE_LIMIT',
+      title: 'Batas Percobaan Tercapai',
+      message:
+        'Anda sudah melakukan beberapa reservasi dalam waktu singkat. Silakan coba beberapa menit lagi.',
+      suggestion:
+        'Mohon tunggu beberapa saat sebelum mencoba melakukan reservasi kembali.',
+      actionType: 'change_time',
+    };
   }
+
+  // --- CLEAN GENERAL FALLBACK (Never leak database details or technical jargon) ---
+  const isTechnical =
+    lower.includes('pgrst') ||
+    lower.includes('rpc') ||
+    lower.includes('postgres') ||
+    lower.includes('relation') ||
+    lower.includes('query') ||
+    lower.includes('function') ||
+    lower.includes('pg_catalog') ||
+    lower.includes('queue') ||
+    lower.includes('constraint') ||
+    lower.includes('foreign key') ||
+    lower.includes('table') ||
+    lower.includes('sqlstate') ||
+    lower.includes('supabase') ||
+    lower.includes('syntax') ||
+    lower.includes('column') ||
+    lower.includes('schema') ||
+    lower.includes('internal');
+
+  const safeMsg =
+    isTechnical || !rawMsg
+      ? 'Reservasi gagal diproses. Silakan pilih jadwal lain atau coba lagi.'
+      : rawMsg;
 
   return {
     kind: 'GENERAL_ERROR',
     title: 'Periksa Kembali Reservasi Anda',
-    message: cleanMsg,
+    message: safeMsg,
     suggestion: 'Silakan periksa kembali data yang dimasukkan atau coba pilih jam kedatangan lain.',
     actionType: 'change_time',
   };

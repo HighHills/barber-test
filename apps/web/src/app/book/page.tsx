@@ -254,11 +254,11 @@ export default function PublicBookingPage(): React.JSX.Element {
         service_id: selectedService.id,
         booking_date: selectedDate,
         booking_time: `${selectedTimeSlot}:00`,
-        customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
+        customer_name: customerName.trim().slice(0, 100),
+        customer_phone: customerPhone.trim().slice(0, 20),
         barber_id: isAnyBarber ? null : selectedBarber?.id || null,
-        customer_email: customerEmail.trim() || null,
-        notes: bookingNotes.trim() || null,
+        customer_email: customerEmail.trim().slice(0, 100) || null,
+        notes: bookingNotes.trim().slice(0, 1000) || null,
       };
 
       const result = await submitPublicBooking(payload);
@@ -266,7 +266,9 @@ export default function PublicBookingPage(): React.JSX.Element {
       clearErrors();
       setCurrentStep(6); // Go to success ticket
     } catch (err: any) {
-      console.error('Booking submission error:', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Booking submission error:', err?.message || err);
+      }
       const formatted = formatBookingError(err, {
         service: selectedService,
         outlet: selectedOutlet,
@@ -695,9 +697,6 @@ export default function PublicBookingPage(): React.JSX.Element {
                         </div>
                         <h3 className="font-bold text-base text-white">{barber.full_name}</h3>
                         <p className="text-xs text-slate-400 mt-1">{barber.position}</p>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-800/80 text-[11px] font-medium text-slate-500 font-mono">
-                        ID: {barber.employee_code}
                       </div>
                     </div>
                   );
@@ -1128,9 +1127,10 @@ export default function PublicBookingPage(): React.JSX.Element {
                     <input
                       type="text"
                       required
+                      maxLength={100}
                       placeholder="Contoh: Budi Santoso"
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
+                      onChange={(e) => setCustomerName(e.target.value.slice(0, 100))}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                     />
                   </div>
@@ -1144,10 +1144,12 @@ export default function PublicBookingPage(): React.JSX.Element {
                     <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                     <input
                       type="tel"
+                      inputMode="numeric"
                       required
-                      placeholder="Contoh: 081234567890"
+                      maxLength={20}
+                      placeholder="Contoh: 0812-3456-7890"
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      onChange={(e) => setCustomerPhone(e.target.value.slice(0, 20))}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                     />
                   </div>
@@ -1164,9 +1166,10 @@ export default function PublicBookingPage(): React.JSX.Element {
                     <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                     <input
                       type="email"
+                      maxLength={100}
                       placeholder="email@domain.com"
                       value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      onChange={(e) => setCustomerEmail(e.target.value.slice(0, 100))}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                     />
                   </div>
@@ -1180,11 +1183,16 @@ export default function PublicBookingPage(): React.JSX.Element {
                     <FileText className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                     <textarea
                       rows={2}
+                      maxLength={1000}
                       placeholder="Contoh: Model low taper fade samping rapi..."
                       value={bookingNotes}
-                      onChange={(e) => setBookingNotes(e.target.value)}
+                      onChange={(e) => setBookingNotes(e.target.value.slice(0, 1000))}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                     />
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+                    <span>Preferensi model atau instruksi khusus untuk barber.</span>
+                    <span className="font-mono">{bookingNotes.length} / 1000</span>
                   </div>
                 </div>
 
@@ -1511,6 +1519,7 @@ function BookingErrorAlert({
   const isDurationOverrun = error.kind === 'DURATION_OVERRUN';
   const isBarberUnavailable = error.kind === 'BARBER_UNAVAILABLE';
   const isSlotTaken = error.kind === 'SLOT_TAKEN';
+  const isRateLimit = error.kind === 'RATE_LIMIT';
 
   const themeClasses = isDurationOverrun
     ? 'bg-amber-950/40 border-amber-500/40 text-amber-200 shadow-amber-500/5'
@@ -1518,6 +1527,8 @@ function BookingErrorAlert({
     ? 'bg-sky-950/40 border-sky-500/40 text-sky-200 shadow-sky-500/5'
     : isSlotTaken
     ? 'bg-orange-950/40 border-orange-500/40 text-orange-200 shadow-orange-500/5'
+    : isRateLimit
+    ? 'bg-amber-950/40 border-amber-500/40 text-amber-200 shadow-amber-500/5'
     : 'bg-rose-950/40 border-rose-500/40 text-rose-200 shadow-rose-500/5';
 
   const badgeClasses = isDurationOverrun
@@ -1526,6 +1537,8 @@ function BookingErrorAlert({
     ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
     : isSlotTaken
     ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+    : isRateLimit
+    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
     : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
 
   const iconComponent = isDurationOverrun ? (
@@ -1534,6 +1547,8 @@ function BookingErrorAlert({
     <UserCheck className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
   ) : isSlotTaken ? (
     <RefreshCw className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+  ) : isRateLimit ? (
+    <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
   ) : (
     <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
   );
@@ -1555,6 +1570,8 @@ function BookingErrorAlert({
                   ? 'Jadwal Barber'
                   : isSlotTaken
                   ? 'Slot Terisi'
+                  : isRateLimit
+                  ? 'Batas Percobaan'
                   : 'Info Reservasi'}
               </span>
             </div>

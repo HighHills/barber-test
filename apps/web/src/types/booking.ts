@@ -7,7 +7,6 @@ export interface PublicOutlet {
   name: string;
   address: string | null;
   phone: string | null;
-  email: string | null;
   timezone: string;
   operating_hours: string;
 }
@@ -24,7 +23,6 @@ export interface PublicService {
 
 export interface PublicBarber {
   id: string;
-  employee_code: string;
   full_name: string;
   position: string;
   barber_position?: string;

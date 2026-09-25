@@ -12,6 +12,92 @@ import type {
 } from '../types/booking';
 
 /**
+ * Safe error classifier for public booking
+ * Guarantees no raw Supabase/PostgreSQL error leaks to the public client UI.
+ */
+export function classifyBookingError(error: any): { code: string; message: string } {
+  const rawMsg = typeof error?.message === 'string' ? error.message : '';
+  const rawCode = typeof error?.code === 'string' ? error.code : '';
+  const lower = (rawMsg + ' ' + rawCode).toLowerCase();
+
+  // Rate limit
+  if (
+    lower.includes('rate_limit') ||
+    lower.includes('terlalu banyak') ||
+    lower.includes('too many') ||
+    lower.includes('429')
+  ) {
+    return {
+      code: 'RATE_LIMIT',
+      message:
+        'Anda sudah melakukan beberapa reservasi dalam waktu singkat. Silakan coba beberapa menit lagi.',
+    };
+  }
+
+  // Duration overrun
+  if (
+    lower.includes('duration_overrun') ||
+    lower.includes('jam tutup') ||
+    lower.includes('melewati jam') ||
+    lower.includes('operating hours')
+  ) {
+    return {
+      code: 'DURATION_OVERRUN',
+      message:
+        'Waktu pengerjaan layanan melewati jam operasional barbershop. Silakan atur waktu kedatangan lebih awal.',
+    };
+  }
+
+  // Outside operating hours
+  if (
+    lower.includes('outside_hours') ||
+    lower.includes('di luar jam') ||
+    lower.includes('outside operating')
+  ) {
+    return {
+      code: 'OUTSIDE_HOURS',
+      message:
+        'Waktu booking berada di luar jam operasional barbershop. Silakan pilih waktu saat cabang beroperasi.',
+    };
+  }
+
+  // Barber unavailable / schedule collision
+  if (
+    lower.includes('barber_unavailable') ||
+    lower.includes('barber_conflict') ||
+    lower.includes('sudah memiliki jadwal') ||
+    lower.includes('overlapping') ||
+    lower.includes('bentrok')
+  ) {
+    return {
+      code: 'BARBER_UNAVAILABLE',
+      message: 'Barber yang dipilih sudah memiliki jadwal janji temu pada jam tersebut.',
+    };
+  }
+
+  // Slot taken / race condition / full
+  if (
+    lower.includes('slot_taken') ||
+    lower.includes('slot_full') ||
+    lower.includes('penuh') ||
+    lower.includes('tidak tersedia') ||
+    lower.includes('terisi')
+  ) {
+    return {
+      code: 'SLOT_TAKEN',
+      message:
+        'Slot jam tersebut baru saja terisi oleh pelanggan lain. Silakan pilih jam kedatangan lain.',
+    };
+  }
+
+  // Generic safe fallback for all other raw database/Postgres/Supabase errors
+  return {
+    code: 'UNKNOWN',
+    message: 'Reservasi gagal diproses. Silakan pilih jadwal lain atau coba lagi.',
+  };
+}
+
+/**
  * Fetch list of active public outlets
  */
 export async function fetchPublicOutlets(): Promise<PublicOutlet[]> {
@@ -19,11 +105,21 @@ export async function fetchPublicOutlets(): Promise<PublicOutlet[]> {
   const { data, error } = await supabase.rpc('get_public_booking_outlets');
 
   if (error) {
-    console.error('Error fetching public outlets:', error);
-    throw new Error(error.message || 'Gagal memuat daftar cabang');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching public outlets:', error.code, error.message);
+    }
+    throw new Error('Gagal memuat daftar cabang. Silakan coba beberapa saat lagi.');
   }
 
-  return (data || []) as PublicOutlet[];
+  return (data || []).map((o: any) => ({
+    id: o.id,
+    code: o.code,
+    name: o.name,
+    address: o.address || null,
+    phone: o.phone || null,
+    timezone: o.timezone || 'Asia/Jakarta',
+    operating_hours: o.operating_hours || '09:00 - 21:00 WIB',
+  })) as PublicOutlet[];
 }
 
 /**
@@ -36,8 +132,10 @@ export async function fetchPublicServices(outletId: string): Promise<PublicServi
   });
 
   if (error) {
-    console.error('Error fetching public services:', error);
-    throw new Error(error.message || 'Gagal memuat daftar layanan');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching public services:', error.code, error.message);
+    }
+    throw new Error('Gagal memuat daftar layanan. Silakan coba beberapa saat lagi.');
   }
 
   return (data || []).map((s: any) => ({
@@ -57,13 +155,14 @@ export async function fetchPublicBarbers(outletId: string): Promise<PublicBarber
   });
 
   if (error) {
-    console.error('Error fetching public barbers:', error);
-    throw new Error(error.message || 'Gagal memuat data barber');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching public barbers:', error.code, error.message);
+    }
+    throw new Error('Gagal memuat data barber. Silakan coba beberapa saat lagi.');
   }
 
   return (data || []).map((b: any) => ({
     id: b.id,
-    employee_code: b.employee_code,
     full_name: b.full_name,
     position: b.barber_position || b.position || 'Barber / Stylist',
   })) as PublicBarber[];
@@ -87,8 +186,10 @@ export async function fetchPublicAvailableSlots(
   });
 
   if (error) {
-    console.error('Error fetching public slots:', error);
-    throw new Error(error.message || 'Gagal memeriksa slot waktu');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching public slots:', error.code, error.message);
+    }
+    throw new Error('Gagal memeriksa ketersediaan slot waktu. Silakan coba beberapa saat lagi.');
   }
 
   return (data || []) as BookingTimeSlot[];
@@ -114,8 +215,13 @@ export async function submitPublicBooking(
   });
 
   if (error) {
-    console.error('Error submitting public booking:', error);
-    throw new Error(error.message || 'Gagal memproses reservasi');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error submitting public booking:', error.code, error.message);
+    }
+    const classified = classifyBookingError(error);
+    const err = new Error(classified.message);
+    (err as any).code = classified.code;
+    throw err;
   }
 
   return data as BookingConfirmation;
