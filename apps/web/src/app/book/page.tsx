@@ -109,6 +109,9 @@ export default function PublicBookingPage(): React.JSX.Element {
           }
         }
       } catch (err: any) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error loading outlets:', err?.message || err);
+        }
         if (isMounted) {
           setErrorMessage(err?.message || 'Gagal memuat daftar cabang.');
         }
@@ -144,7 +147,12 @@ export default function PublicBookingPage(): React.JSX.Element {
           }
         }
       } catch (err: any) {
-        console.error('Error loading outlet services/barbers:', err);
+        if (process.env.NODE_ENV === 'development') {
+          console.error(
+            'Error loading outlet services/barbers:',
+            err?.message || err
+          );
+        }
       } finally {
         if (isMounted) {
           setIsLoadingServices(false);
@@ -181,7 +189,12 @@ export default function PublicBookingPage(): React.JSX.Element {
         }
       }
     } catch (err: any) {
-      console.error('Error fetching available slots:', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error(
+          'Error fetching available slots:',
+          err?.message || err
+        );
+      }
     } finally {
       setIsLoadingSlots(false);
     }
