@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import {
   Store,
   Scissors,
@@ -21,7 +20,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Loader2,
-  ExternalLink,
   MapPin,
   RefreshCw,
   X,
@@ -346,19 +344,11 @@ export default function PublicBookingPage(): React.JSX.Element {
               <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5">
                 BARBERSHOP <span className="text-amber-400">RESERVATION</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">
+              <p className="text-xs text-slate-400">
                 Reservasi Mandiri Instan • Bebas Antre • Tiket WhatsApp
               </p>
             </div>
           </div>
-
-          <Link
-            href="/"
-            className="text-xs font-semibold text-slate-400 hover:text-amber-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <span>Masuk POS Kasir</span>
-            <ExternalLink className="w-3 h-3" />
-          </Link>
         </div>
       </header>
 
