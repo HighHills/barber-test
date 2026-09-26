@@ -111,7 +111,8 @@ function QueueManagementContent(): React.JSX.Element {
           started_at,
           completed_at,
           customers(full_name, phone),
-          employees!barber_id(full_name)
+          employees!barber_id(full_name),
+          appointments!appointment_id(guest_customer_name, guest_customer_phone)
         `)
         .eq('outlet_id', currentOutlet.id)
         .gte('joined_at', todayStart.toISOString())
@@ -127,6 +128,7 @@ function QueueManagementContent(): React.JSX.Element {
 
       const mapped: QueueItemView[] = (data || []).map((q: any) => {
         const cust = q.customers;
+        const apt = q.appointments;
         const emp = q.employees;
         const savedSrv = queueServices[q.id];
 
@@ -135,8 +137,8 @@ function QueueManagementContent(): React.JSX.Element {
           queue_number: q.queue_number,
           outlet_id: q.outlet_id,
           customer_id: q.customer_id,
-          customer_name: cust?.full_name || null,
-          customer_phone: cust?.phone || null,
+          customer_name: cust?.full_name || apt?.guest_customer_name || null,
+          customer_phone: cust?.phone || apt?.guest_customer_phone || null,
           appointment_id: q.appointment_id,
           barber_id: q.barber_id,
           barber_name: emp?.full_name || null,
@@ -167,6 +169,9 @@ function QueueManagementContent(): React.JSX.Element {
           id,
           appointment_number,
           customer_id,
+          guest_customer_name,
+          guest_customer_phone,
+          guest_customer_email,
           outlet_id,
           service_id,
           barber_id,
@@ -191,8 +196,11 @@ function QueueManagementContent(): React.JSX.Element {
         id: a.id,
         appointment_number: a.appointment_number,
         customer_id: a.customer_id,
-        customer_name: a.customers?.full_name || 'Pelanggan',
-        customer_phone: a.customers?.phone || '',
+        customer_name: a.customers?.full_name || a.guest_customer_name || 'Pelanggan',
+        customer_phone: a.customers?.phone || a.guest_customer_phone || '',
+        guest_customer_name: a.guest_customer_name,
+        guest_customer_phone: a.guest_customer_phone,
+        guest_customer_email: a.guest_customer_email,
         outlet_id: a.outlet_id,
         service_id: a.service_id,
         service_name: a.services?.name || 'Layanan Pangkas',

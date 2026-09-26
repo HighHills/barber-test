@@ -328,9 +328,12 @@ export interface QueueItemView {
 export interface AppointmentView {
   id: string;
   appointment_number: string;
-  customer_id: string;
+  customer_id: string | null;
   customer_name: string;
   customer_phone: string;
+  guest_customer_name?: string | null;
+  guest_customer_phone?: string | null;
+  guest_customer_email?: string | null;
   outlet_id: string;
   service_id: string;
   service_name: string;

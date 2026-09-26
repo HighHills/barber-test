@@ -169,7 +169,7 @@ export function AppointmentCalendar({
                 month: 'long',
                 year: 'numeric',
               })}
-              ) — {filteredAppointments.length} Reservasi
+              ) : {filteredAppointments.length} Reservasi
             </h3>
           </div>
           <span className="text-xs text-slate-500 shrink-0">
@@ -261,12 +261,23 @@ export function AppointmentCalendar({
 
                     {/* Customer Info */}
                     <div className="mb-3 min-w-0">
-                      <h4
-                        className="text-sm font-bold text-slate-900 leading-tight line-clamp-2 break-words [overflow-wrap:anywhere]"
-                        title={apt.customer_name}
-                      >
-                        {apt.customer_name}
-                      </h4>
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <h4
+                          className="text-sm font-bold text-slate-900 leading-tight line-clamp-2 break-words [overflow-wrap:anywhere]"
+                          title={apt.customer_name}
+                        >
+                          {apt.customer_name}
+                        </h4>
+                        {!apt.customer_id ? (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                            Guest
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                            Customer
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1 min-w-0">
                         <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                         <span className="min-w-0 truncate break-all [overflow-wrap:anywhere]">

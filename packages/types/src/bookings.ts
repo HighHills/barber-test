@@ -10,7 +10,10 @@ export type AppointmentStatus =
 export interface Appointment {
   id: string;
   appointment_number: string;
-  customer_id: string;
+  customer_id: string | null;
+  guest_customer_name?: string | null;
+  guest_customer_phone?: string | null;
+  guest_customer_email?: string | null;
   outlet_id: string;
   service_id: string;
   barber_id: string;
