@@ -221,8 +221,13 @@ export default function PublicBookingPage(): React.JSX.Element {
       setErrorMessage('Silakan pilih jam slot kedatangan Anda.');
       return;
     }
-    if (!customerName.trim()) {
+    const trimmedCustomerName = customerName.trim();
+    if (!trimmedCustomerName) {
       setErrorMessage('Nama lengkap wajib diisi.');
+      return;
+    }
+    if (trimmedCustomerName.length < 2 || trimmedCustomerName.length > 40) {
+      setErrorMessage('Nama pelanggan harus 2-40 karakter');
       return;
     }
     if (!customerPhone.trim() || customerPhone.replace(/[^0-9]/g, '').length < 8) {
@@ -267,7 +272,7 @@ export default function PublicBookingPage(): React.JSX.Element {
         service_id: selectedService.id,
         booking_date: selectedDate,
         booking_time: `${selectedTimeSlot}:00`,
-        customer_name: customerName.trim().slice(0, 100),
+        customer_name: trimmedCustomerName,
         customer_phone: customerPhone.trim().slice(0, 20),
         barber_id: isAnyBarber ? null : selectedBarber?.id || null,
         customer_email: customerEmail.trim().slice(0, 100) || null,
@@ -1140,10 +1145,10 @@ export default function PublicBookingPage(): React.JSX.Element {
                     <input
                       type="text"
                       required
-                      maxLength={100}
+                      maxLength={40}
                       placeholder="Contoh: Budi Santoso"
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value.slice(0, 100))}
+                      onChange={(e) => setCustomerName(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                     />
                   </div>
