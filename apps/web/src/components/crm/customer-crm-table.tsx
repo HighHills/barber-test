@@ -49,6 +49,11 @@ export function CustomerCrmTable({
     return { total, vipCount, totalPoints, totalLtv, avgVisits };
   }, [customers]);
 
+  const unassignedCount = useMemo(
+    () => customers.filter((c) => !c.tier_code).length,
+    [customers]
+  );
+
   // Filtered customers
   const filteredCustomers = useMemo(() => {
     return customers.filter((c) => {
@@ -58,8 +63,11 @@ export function CustomerCrmTable({
         c.customer_code.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchTier =
-        selectedTier === 'ALL' ||
-        (c.tier_code || 'BRONZE') === selectedTier;
+        selectedTier === 'ALL'
+          ? true
+          : selectedTier === 'UNASSIGNED'
+          ? !c.tier_code
+          : c.tier_code === selectedTier;
 
       return matchSearch && matchTier;
     });
@@ -154,7 +162,7 @@ export function CustomerCrmTable({
           </div>
 
           {/* Tier Filter Tabs */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1 text-xs">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1 text-xs flex-wrap">
             <button
               onClick={() => setSelectedTier('ALL')}
               className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
@@ -163,25 +171,43 @@ export function CustomerCrmTable({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Semua Tier ({customers.length})
+              Semua ({customers.length})
             </button>
-            {tiers.map((t) => (
+            {tiers.map((t) => {
+              const count = customers.filter((c) => c.tier_code === t.code).length;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTier(t.code)}
+                  className={`px-2.5 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer ${
+                    selectedTier === t.code
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: t.color_hex }}
+                  />
+                  <span>
+                    {t.name.split(' ')[0]} ({count})
+                  </span>
+                </button>
+              );
+            })}
+            {unassignedCount > 0 && (
               <button
-                key={t.id}
-                onClick={() => setSelectedTier(t.code)}
+                onClick={() => setSelectedTier('UNASSIGNED')}
                 className={`px-2.5 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer ${
-                  selectedTier === t.code
+                  selectedTier === 'UNASSIGNED'
                     ? 'bg-white text-slate-900 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: t.color_hex }}
-                />
-                <span>{t.name.split(' ')[0]}</span>
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                <span>Tanpa Tier ({unassignedCount})</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
 
@@ -201,7 +227,7 @@ export function CustomerCrmTable({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
               <tr>
-                <th className="px-5 py-3.5">Pelanggan</th>
+                <th className="px-5 py-3.5 w-64 max-w-[280px]">Pelanggan</th>
                 <th className="px-5 py-3.5">Kontak</th>
                 <th className="px-5 py-3.5">Membership</th>
                 <th className="px-5 py-3.5 text-center">Kunjungan</th>
@@ -228,13 +254,16 @@ export function CustomerCrmTable({
                 </tr>
               ) : (
                 filteredCustomers.map((c) => {
-                  const tierColor = c.tier_color || '#94a3b8';
-                  const initials = c.full_name
-                    .split(' ')
+                  const hasTier = Boolean(c.tier_code && c.tier_name);
+                  const tierColor = hasTier ? (c.tier_color || '#94a3b8') : null;
+                  const initials = (c.full_name || '')
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
                     .map((n) => n[0])
                     .slice(0, 2)
                     .join('')
-                    .toUpperCase();
+                    .toUpperCase() || 'P';
 
                   return (
                     <tr
@@ -242,25 +271,35 @@ export function CustomerCrmTable({
                       className="hover:bg-slate-50/70 transition-colors"
                     >
                       {/* Customer Info */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
+                      <td className="px-5 py-3.5 w-64 max-w-[280px] min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div
-                            className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-2xs shrink-0"
-                            style={{ backgroundColor: tierColor }}
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shadow-2xs shrink-0 ${
+                              hasTier ? 'text-white' : 'bg-slate-200 text-slate-600'
+                            }`}
+                            style={hasTier && tierColor ? { backgroundColor: tierColor } : undefined}
                           >
                             {initials}
                           </div>
-                          <div>
-                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                              <span>{c.full_name}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="block max-w-full truncate"
+                                title={c.full_name}
+                              >
+                                {c.full_name}
+                              </span>
                               {c.tier_code === 'PLATINUM' && (
-                                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                                <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                               )}
                               {c.tier_code === 'GOLD' && (
-                                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                                <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            <div
+                              className="text-[11px] text-slate-400 font-mono mt-0.5 truncate"
+                              title={c.customer_code}
+                            >
                               {c.customer_code}
                             </div>
                           </div>
@@ -268,13 +307,13 @@ export function CustomerCrmTable({
                       </td>
 
                       {/* Contact */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-1.5 text-slate-700 font-mono">
-                          <Phone className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{c.phone}</span>
+                      <td className="px-5 py-3.5 max-w-[200px] min-w-0">
+                        <div className="flex items-center gap-1.5 text-slate-700 font-mono min-w-0">
+                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate" title={c.phone}>{c.phone}</span>
                         </div>
                         {c.email && (
-                          <div className="text-[11px] text-slate-400 mt-0.5">
+                          <div className="text-[11px] text-slate-400 mt-0.5 truncate" title={c.email}>
                             {c.email}
                           </div>
                         )}
@@ -282,14 +321,20 @@ export function CustomerCrmTable({
 
                       {/* Tier Badge */}
                       <td className="px-5 py-3.5">
-                        <span
-                          className="text-[10px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1 text-white shadow-2xs"
-                          style={{ backgroundColor: tierColor }}
-                        >
-                          <Crown className="w-3 h-3" />
-                          <span>{c.tier_name || 'Bronze Member'}</span>
-                        </span>
-                        {(c.tier_discount_service || 0) > 0 && (
+                        {hasTier ? (
+                          <span
+                            className="text-[10px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1 text-white shadow-2xs"
+                            style={{ backgroundColor: tierColor || '#94a3b8' }}
+                          >
+                            <Crown className="w-3 h-3 shrink-0" />
+                            <span>{c.tier_name}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full inline-flex items-center gap-1 bg-slate-100 text-slate-600 border border-slate-200">
+                            <span>Belum ditetapkan</span>
+                          </span>
+                        )}
+                        {hasTier && (c.tier_discount_service || 0) > 0 && (
                           <div className="text-[10px] text-emerald-600 font-bold mt-0.5">
                             Diskon Jasa {c.tier_discount_service}%
                           </div>

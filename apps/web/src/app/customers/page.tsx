@@ -250,9 +250,9 @@ function CustomersContent(): React.JSX.Element {
           gender: c.gender,
           date_of_birth: c.date_of_birth,
           tier_id: c.tier_id,
-          tier_code: tierObj?.code || 'BRONZE',
-          tier_name: tierObj?.name || 'Bronze Member',
-          tier_color: tierObj?.color_hex || '#94a3b8',
+          tier_code: tierObj?.code ?? null,
+          tier_name: tierObj?.name ?? null,
+          tier_color: tierObj?.color_hex ?? null,
           tier_discount_service: Number(tierObj?.discount_percent_service) || 0,
           tier_discount_product: Number(tierObj?.discount_percent_product) || 0,
           current_loyalty_points: Number(c.current_loyalty_points) || 0,
@@ -352,8 +352,9 @@ function CustomersContent(): React.JSX.Element {
       PLATINUM: 0,
     };
     customers.forEach((c) => {
-      const code = c.tier_code || 'BRONZE';
-      counts[code] = (counts[code] || 0) + 1;
+      if (c.tier_code && counts[c.tier_code] !== undefined) {
+        counts[c.tier_code] = (counts[c.tier_code] || 0) + 1;
+      }
     });
     return counts;
   }, [customers]);

@@ -80,17 +80,21 @@ export function CustomerDetailModal({
   if (!customer) return null;
 
   // Find next tier for progression bar
-  const currentTierIndex = tiers.findIndex((t) => t.code === customer.tier_code);
+  const currentTierIndex = customer.tier_code
+    ? tiers.findIndex((t) => t.code === customer.tier_code)
+    : -1;
   const nextTier =
     currentTierIndex !== -1 && currentTierIndex < tiers.length - 1
       ? tiers[currentTierIndex + 1]
+      : currentTierIndex === -1 && tiers.length > 0
+      ? tiers[0]
       : null;
 
   const spendingNeeded = nextTier
-    ? Math.max(0, nextTier.min_spending - customer.total_spending)
+    ? Math.max(0, nextTier.min_spending - (customer.total_spending || 0))
     : 0;
   const visitsNeeded = nextTier
-    ? Math.max(0, nextTier.min_visits - customer.total_visits)
+    ? Math.max(0, nextTier.min_visits - (customer.total_visits || 0))
     : 0;
 
   // Calculate percentage to next tier
@@ -98,8 +102,12 @@ export function CustomerDetailModal({
     ? Math.min(
         100,
         Math.max(
-          (customer.total_spending / nextTier.min_spending) * 100,
-          (customer.total_visits / nextTier.min_visits) * 100
+          nextTier.min_spending > 0
+            ? ((customer.total_spending || 0) / nextTier.min_spending) * 100
+            : 0,
+          nextTier.min_visits > 0
+            ? ((customer.total_visits || 0) / nextTier.min_visits) * 100
+            : 0
         )
       )
     : 100;
@@ -134,40 +142,55 @@ export function CustomerDetailModal({
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-          <div className="flex items-center gap-3">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base text-white shadow-xs"
-              style={{ backgroundColor: customer.tier_color || '#64748b' }}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-xs shrink-0 ${
+                customer.tier_name ? 'text-white' : 'bg-slate-200 text-slate-600'
+              }`}
+              style={customer.tier_name && customer.tier_color ? { backgroundColor: customer.tier_color } : undefined}
             >
-              {customer.full_name.slice(0, 2).toUpperCase()}
+              {(customer.full_name || '')
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((n) => n[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase() || 'P'}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black text-slate-900">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <h3 className="text-lg font-black text-slate-900 break-words [overflow-wrap:anywhere]">
                   {customer.full_name}
                 </h3>
-                <span
-                  className="text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 text-white shadow-2xs"
-                  style={{ backgroundColor: customer.tier_color || '#64748b' }}
-                >
-                  <Crown className="w-3 h-3" />
-                  <span>{customer.tier_name || 'Bronze Member'}</span>
-                </span>
+                {customer.tier_name ? (
+                  <span
+                    className="text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 text-white shadow-2xs shrink-0"
+                    style={{ backgroundColor: customer.tier_color || '#64748b' }}
+                  >
+                    <Crown className="w-3 h-3" />
+                    <span>{customer.tier_name}</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 bg-slate-200 text-slate-600 border border-slate-300 shrink-0">
+                    <span>Belum ditetapkan</span>
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-3 text-xs text-slate-500 font-medium mt-0.5">
+              <div className="flex items-center gap-3 text-xs text-slate-500 font-medium mt-0.5 flex-wrap min-w-0">
                 <span className="font-mono">{customer.customer_code}</span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
-                  <Phone className="w-3 h-3" />
-                  {customer.phone}
+                  <Phone className="w-3 h-3 shrink-0" />
+                  <span>{customer.phone}</span>
                 </span>
                 {customer.email && (
                   <>
                     <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Mail className="w-3 h-3" />
-                      {customer.email}
+                    <span className="flex items-center gap-1 break-all">
+                      <Mail className="w-3 h-3 shrink-0" />
+                      <span>{customer.email}</span>
                     </span>
                   </>
                 )}
@@ -177,7 +200,7 @@ export function CustomerDetailModal({
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-slate-200/70 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full hover:bg-slate-200/70 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -203,16 +226,22 @@ export function CustomerDetailModal({
                 </div>
 
                 <div className="text-xl font-black mt-1">
-                  {customer.tier_name || 'Bronze Member'}
+                  {customer.tier_name || 'Belum ditetapkan'}
                 </div>
 
                 <div className="text-xs text-slate-300 mt-0.5">
                   Hak Istimewa:{' '}
-                  {(customer.tier_discount_service || 0) > 0
-                    ? `Diskon Jasa ${customer.tier_discount_service}%`
-                    : 'Poin Belanja Reguler'}
-                  {(customer.tier_discount_product || 0) > 0 &&
-                    `, Diskon Produk ${customer.tier_discount_product}%`}
+                  {customer.tier_name ? (
+                    <>
+                      {(customer.tier_discount_service || 0) > 0
+                        ? `Diskon Jasa ${customer.tier_discount_service}%`
+                        : 'Poin Belanja Reguler'}
+                      {(customer.tier_discount_product || 0) > 0 &&
+                        `, Diskon Produk ${customer.tier_discount_product}%`}
+                    </>
+                  ) : (
+                    'Belum ada hak istimewa (Kumpulkan transaksi untuk meraih tier)'
+                  )}
                 </div>
               </div>
 
