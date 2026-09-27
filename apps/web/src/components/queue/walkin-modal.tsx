@@ -3,6 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem, CustomerOption } from '../../types/pos';
+import {
+  BARBER_AVAILABILITY_LABELS,
+  BARBER_AVAILABILITY_BADGE_CLASSES,
+} from '../../types/pos';
 import { customerService } from '../../services/customer-service';
 import {
   X,
@@ -374,11 +378,23 @@ export function WalkinModal({
                       : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-900 text-xs mb-0.5">
-                    <Scissors className="w-3 h-3 text-slate-500" />
-                    <span>{b.full_name}</span>
+                  <div className="flex items-center justify-between gap-1.5 mb-1">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-900 text-xs truncate">
+                      <Scissors className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="truncate">{b.full_name}</span>
+                    </div>
+                    {b.availability_status && (
+                      <span
+                        className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ring-1 shrink-0 ${
+                          BARBER_AVAILABILITY_BADGE_CLASSES[b.availability_status] ||
+                          'bg-slate-100 text-slate-600 border-slate-200 ring-slate-400/20'
+                        }`}
+                      >
+                        {BARBER_AVAILABILITY_LABELS[b.availability_status] || b.availability_status}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] text-slate-500">{b.position || 'Stylist'}</p>
+                  <p className="text-[11px] text-slate-500 font-mono">{b.position || 'Stylist'}</p>
                 </button>
               ))}
             </div>

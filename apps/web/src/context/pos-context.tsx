@@ -12,6 +12,7 @@ import type {
   CashSession,
   BusinessSettings,
 } from '../types/pos';
+import { parseAuthoritativeBarbers } from '../lib/barber-parser';
 import { accountingService } from '../services/accounting-service';
 
 interface PosContextType {
@@ -72,101 +73,43 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
   const [simulatedOutletId, setSimulatedOutletId] = useState<string | null>(null);
 
   const loadBarbers = useCallback(async (outletId: string): Promise<void> => {
-    if (!outletId) {
+    const trimmedOutletId = outletId?.trim();
+    if (!trimmedOutletId) {
       setBarbers([]);
       return;
     }
 
+    // Always clear barbers at start to fail-closed and prevent stale cross-outlet leakage
+    setBarbers([]);
+
     try {
-      const { data, error: barberErr } = await supabase
-        .from('employee_outlets')
-        .select(`
-          employee_id,
-          outlet_id,
-          is_active,
-          employees!inner (
-            id,
-            employee_code,
-            full_name,
-            position,
-            is_active
-          )
-        `)
-        .eq('outlet_id', outletId)
-        .eq('is_active', true);
+      const { data, error: rpcErr } = await supabase.rpc('get_outlet_barber_availability', {
+        p_outlet_id: trimmedOutletId,
+      });
 
-      if (barberErr) {
+      if (rpcErr) {
         setBarbers([]);
-        throw barberErr;
+        throw new Error(`Gagal memuat ketersediaan kapster: ${rpcErr.message}`);
       }
 
-      const seen = new Set<string>();
-      const nextBarbers: BarberEmployee[] = [];
+      const { barbers: parsedBarbers, error: parseErr } = parseAuthoritativeBarbers(
+        data,
+        trimmedOutletId
+      );
 
-      for (const row of (data || []) as Array<{
-        employee_id: string;
-        outlet_id: string;
-        is_active: boolean;
-        employees:
-          | {
-              id: string;
-              employee_code: string;
-              full_name: string;
-              position: string;
-              is_active: boolean;
-            }
-          | {
-              id: string;
-              employee_code: string;
-              full_name: string;
-              position: string;
-              is_active: boolean;
-            }[]
-          | null;
-      }>) {
-        const employeeRelations = Array.isArray(row.employees)
-          ? row.employees
-          : row.employees
-          ? [row.employees]
-          : [];
-
-        if (employeeRelations.length !== 1) {
-          setBarbers([]);
-          throw new Error('Data kapster tidak konsisten: relasi employee tidak valid.');
-        }
-
-        const employee = employeeRelations[0];
-
-        if (row.outlet_id !== outletId || !row.is_active || !employee.is_active) {
-          continue;
-        }
-
-        const position = employee.position.trim().toLowerCase();
-        const isBarber =
-          position.includes('barber') || position.includes('kapster');
-
-        if (!isBarber) {
-          continue;
-        }
-
-        if (seen.has(employee.id)) {
-          setBarbers([]);
-          throw new Error('Data kapster tidak konsisten: ditemukan duplikasi penugasan.');
-        }
-
-        seen.add(employee.id);
-        nextBarbers.push(employee as BarberEmployee);
+      if (parseErr) {
+        setBarbers([]);
+        throw new Error(parseErr);
       }
 
-      nextBarbers.sort((a, b) => a.full_name.localeCompare(b.full_name));
-      setBarbers(nextBarbers);
+      setBarbers(parsedBarbers);
     } catch (err: unknown) {
       console.error('Error loading outlet barbers:', err);
       setBarbers([]);
       setError(
         err instanceof Error
           ? err.message
-          : 'Gagal memuat daftar kapster cabang.'
+          : 'Gagal memuat ketersediaan kapster cabang.'
       );
     }
   }, [supabase]);
@@ -453,8 +396,10 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       if (targetId) {
         const target = availableOutlets.find((o) => o.id === targetId);
         if (target) {
+          setBarbers([]);
           setCurrentOutletState(target);
-          loadRegisterAndSession(target.id);
+          void loadBarbers(target.id);
+          void loadRegisterAndSession(target.id);
         }
       }
     }
@@ -465,6 +410,8 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       console.warn('Outlet dikunci pada cabang penugasan kasir:', effectiveAssignedOutletId);
       return;
     }
+    // Clear barbers immediately on outlet change to avoid stale cross-outlet display
+    setBarbers([]);
     setCurrentOutletState(outlet);
     void loadBarbers(outlet.id);
     void loadRegisterAndSession(outlet.id);

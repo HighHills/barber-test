@@ -32,12 +32,52 @@ export interface CashierSubAccountItem {
   created_at: string;
 }
 
+import type {
+  BarberAvailabilityStatus,
+  BarberAvailabilityVariant,
+  RawBarberAvailabilityRow,
+} from './barber-availability';
+import {
+  BARBER_AVAILABILITY_STATUSES,
+  BARBER_AVAILABILITY_LABELS,
+  BARBER_AVAILABILITY_VARIANTS,
+  BARBER_AVAILABILITY_BADGE_CLASSES,
+  isValidBarberAvailabilityStatus,
+} from './barber-availability';
+
+export type {
+  BarberAvailabilityStatus,
+  BarberAvailabilityVariant,
+  RawBarberAvailabilityRow,
+};
+export {
+  BARBER_AVAILABILITY_STATUSES,
+  BARBER_AVAILABILITY_LABELS,
+  BARBER_AVAILABILITY_VARIANTS,
+  BARBER_AVAILABILITY_BADGE_CLASSES,
+  isValidBarberAvailabilityStatus,
+};
+
 export interface BarberEmployee {
   id: string;
   employee_code: string;
   full_name: string;
   position: string;
   is_active: boolean;
+  // Authoritative availability fields from get_outlet_barber_availability RPC
+  availability_status: BarberAvailabilityStatus;
+  is_available_now: boolean;
+  schedule_configured: boolean;
+  today_schedule_active: boolean;
+  shift_start: string | null;
+  shift_end: string | null;
+  break_start: string | null;
+  break_end: string | null;
+  observed_at: string;
+  outlet_timezone: string;
+  local_date: string;
+  local_time: string;
+  day_of_week: number;
 }
 
 export interface CatalogItem {

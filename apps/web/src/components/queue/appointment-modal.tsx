@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem, CustomerOption } from '../../types/pos';
+import { BARBER_AVAILABILITY_LABELS } from '../../types/pos';
 import { customerService } from '../../services/customer-service';
 import { appointmentService } from '../../services/appointment-service';
 import {
@@ -392,6 +393,9 @@ export function AppointmentModal({
                 {barbers.map((b: BarberEmployee) => (
                   <option key={b.id} value={b.id}>
                     {b.full_name} ({b.position || 'Barber'})
+                    {b.availability_status
+                      ? ` — [${BARBER_AVAILABILITY_LABELS[b.availability_status] || b.availability_status}]`
+                      : ''}
                   </option>
                 ))}
               </select>

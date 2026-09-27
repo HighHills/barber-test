@@ -3,6 +3,10 @@
 import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { CatalogItem, BarberEmployee } from '../../types/pos';
+import {
+  BARBER_AVAILABILITY_LABELS,
+  BARBER_AVAILABILITY_BADGE_CLASSES,
+} from '../../types/pos';
 import { formatCurrency } from '../../lib/formatters';
 import { Scissors, UserCheck, X, Search, Check } from 'lucide-react';
 
@@ -107,8 +111,21 @@ export function BarberSelectModal({
                       {barber.full_name.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <h4 className="text-sm font-semibold text-slate-900">{barber.full_name}</h4>
-                      <p className="text-[11px] text-slate-500 font-mono">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-slate-900">{barber.full_name}</h4>
+                        {barber.availability_status && (
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ring-1 ${
+                              BARBER_AVAILABILITY_BADGE_CLASSES[barber.availability_status] ||
+                              'bg-slate-100 text-slate-600 border-slate-200 ring-slate-400/20'
+                            }`}
+                          >
+                            {BARBER_AVAILABILITY_LABELS[barber.availability_status] ||
+                              barber.availability_status}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                         {barber.employee_code} • {barber.position}
                       </p>
                     </div>

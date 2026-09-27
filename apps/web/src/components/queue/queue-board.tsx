@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { usePos } from '../../context/pos-context';
 import type { QueueItemView, BarberEmployee, CatalogItem } from '../../types/pos';
 import {
+  BARBER_AVAILABILITY_LABELS,
+  BARBER_AVAILABILITY_BADGE_CLASSES,
+} from '../../types/pos';
+import {
   Scissors,
   Users,
   Clock,
@@ -185,11 +189,22 @@ export function QueueBoard({
                 {/* Station Top Bar */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black text-slate-400">
                         KURSI #{index + 1}
                       </span>
                       <h3 className="text-sm font-bold text-slate-900">{barber.full_name}</h3>
+                      {barber.availability_status && (
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ring-1 ${
+                            BARBER_AVAILABILITY_BADGE_CLASSES[barber.availability_status] ||
+                            'bg-slate-100 text-slate-600 border-slate-200 ring-slate-400/20'
+                          }`}
+                        >
+                          {BARBER_AVAILABILITY_LABELS[barber.availability_status] ||
+                            barber.availability_status}
+                        </span>
+                      )}
                     </div>
                     {isServing && (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white flex items-center gap-1 shadow-2xs">
@@ -244,7 +259,11 @@ export function QueueBoard({
                   ) : (
                     <div className="h-16 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center justify-center text-center text-slate-400 mb-3">
                       <Scissors className="w-4 h-4 text-slate-300 mb-0.5" />
-                      <span className="text-xs font-medium">Siap melayani antrean berikutnya</span>
+                      <span className="text-xs font-medium">
+                        {barber.availability_status === 'SHIFT_ACTIVE'
+                          ? 'Siap melayani antrean berikutnya'
+                          : `Status: ${BARBER_AVAILABILITY_LABELS[barber.availability_status] || barber.availability_status}`}
+                      </span>
                     </div>
                   )}
                 </div>

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { AppointmentView, BarberEmployee } from '../../types/pos';
+import { BARBER_AVAILABILITY_LABELS } from '../../types/pos';
 import {
   Calendar,
   Clock,
@@ -142,6 +143,9 @@ export function AppointmentCalendar({
             {barbers.map((b: BarberEmployee) => (
               <option key={b.id} value={b.id}>
                 {b.full_name}
+                {b.availability_status
+                  ? ` — [${BARBER_AVAILABILITY_LABELS[b.availability_status] || b.availability_status}]`
+                  : ''}
               </option>
             ))}
           </select>

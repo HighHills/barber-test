@@ -32,6 +32,7 @@ function CustomersContent(): React.JSX.Element {
     currentOutlet,
     profile,
     refreshData,
+    barbers,
   } = usePos();
 
   const [activeTab, setActiveTab] = useState<'CUSTOMERS' | 'TIERS' | 'LOYALTY_LEDGER'>('CUSTOMERS');
@@ -40,7 +41,6 @@ function CustomersContent(): React.JSX.Element {
   const [customers, setCustomers] = useState<CustomerDetailCRM[]>([]);
   const [tiers, setTiers] = useState<CustomerTierView[]>([]);
   const [loyaltyLedger, setLoyaltyLedger] = useState<LoyaltyLedgerEntry[]>([]);
-  const [barbers, setBarbers] = useState<Array<{ id: string; full_name: string }>>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -160,22 +160,6 @@ function CustomersContent(): React.JSX.Element {
     }
   }, [supabase]);
 
-  // 2. Load Barbers
-  const loadBarbers = useCallback(async () => {
-    if (!currentOutlet) return;
-    try {
-      const { data } = await supabase
-        .from('employees')
-        .select('id, full_name')
-        .eq('outlet_id', currentOutlet.id)
-        .eq('is_active', true)
-        .order('full_name');
-
-      if (data) setBarbers(data);
-    } catch (err) {
-      console.error('Error loading barbers:', err);
-    }
-  }, [supabase, currentOutlet]);
 
   // 3. Load Customers with Stats
   const loadCustomers = useCallback(async () => {
@@ -338,10 +322,9 @@ function CustomersContent(): React.JSX.Element {
   // Initial Load
   useEffect(() => {
     loadTiers();
-    loadBarbers();
     loadCustomers();
     loadLoyaltyLedger();
-  }, [loadTiers, loadBarbers, loadCustomers, loadLoyaltyLedger]);
+  }, [loadTiers, loadCustomers, loadLoyaltyLedger]);
 
   // Member count by tier
   const customerCountByTier = useMemo(() => {

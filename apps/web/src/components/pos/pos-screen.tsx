@@ -18,7 +18,15 @@ import { LoginDialog } from '../auth/login-dialog';
 import { Loader2, CheckCircle2, X } from 'lucide-react';
 
 export function PosScreen(): React.JSX.Element {
-  const { user, supabase, currentOutlet, isLoading, businessSettings, availableOutlets, refreshData } = usePos();
+  const {
+    user,
+    supabase,
+    isLoading,
+    businessSettings,
+    availableOutlets,
+    refreshData,
+    barbers,
+  } = usePos();
 
   // Modals & Customer state
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetailCRM | null>(null);
@@ -26,7 +34,6 @@ export function PosScreen(): React.JSX.Element {
   const [isCustomerPickerOpen, setIsCustomerPickerOpen] = useState<boolean>(false);
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState<boolean>(false);
   const [tiers, setTiers] = useState<CustomerTierView[]>([]);
-  const [barbers, setBarbers] = useState<Array<{ id: string; full_name: string }>>([]);
 
   const [selectedService, setSelectedService] = useState<CatalogItem | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
@@ -34,7 +41,7 @@ export function PosScreen(): React.JSX.Element {
   const [sessionModalMode, setSessionModalMode] = useState<'OPEN' | 'CLOSE' | null>(null);
   const [queueHandOffNotice, setQueueHandOffNotice] = useState<string | null>(null);
 
-  // Load tiers & barbers
+  // Load tiers metadata
   useEffect(() => {
     const loadMetadata = async () => {
       try {
@@ -59,23 +66,13 @@ export function PosScreen(): React.JSX.Element {
             }))
           );
         }
-
-        if (currentOutlet) {
-          const { data: bData } = await supabase
-            .from('employees')
-            .select('id, full_name')
-            .eq('outlet_id', currentOutlet.id)
-            .eq('is_active', true)
-            .order('full_name');
-          if (bData) setBarbers(bData);
-        }
       } catch (err) {
         console.error('Error loading POS metadata:', err);
       }
     };
 
     loadMetadata();
-  }, [supabase, currentOutlet]);
+  }, [supabase]);
 
   // Check for pending queue checkout hand-off from /queue
   useEffect(() => {
