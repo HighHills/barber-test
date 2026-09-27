@@ -7,6 +7,7 @@ import {
   BARBER_AVAILABILITY_LABELS,
   BARBER_AVAILABILITY_BADGE_CLASSES,
 } from '../../types/pos';
+import { parseBarberOperationalError } from '../../lib/barber-operation-errors';
 import { customerService } from '../../services/customer-service';
 import {
   X,
@@ -34,7 +35,7 @@ export function WalkinModal({
   onSuccess,
   availableServices,
 }: WalkinModalProps): React.JSX.Element | null {
-  const { supabase, currentOutlet, barbers } = usePos();
+  const { supabase, currentOutlet, barbers, refreshData } = usePos();
 
   // Mode: Existing vs New Customer
   const [customerMode, setCustomerMode] = useState<'NEW' | 'EXISTING'>('NEW');
@@ -143,6 +144,14 @@ export function WalkinModal({
       });
 
       if (rpcErr) {
+        const opError = parseBarberOperationalError(rpcErr);
+        if (opError) {
+          // Authoritative Phase 4B availability rejection:
+          // Keep modal open, preserve selected barber, refresh availability through usePos
+          await refreshData();
+          setErrorMessage(opError.message);
+          return;
+        }
         throw new Error(rpcErr.message || 'Gagal membuat antrean walk-in.');
       }
 
@@ -179,7 +188,13 @@ export function WalkinModal({
       onClose();
     } catch (err: unknown) {
       console.error('Walkin submission error:', err);
-      setErrorMessage(err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat mendaftar.');
+      const opError = parseBarberOperationalError(err);
+      if (opError) {
+        void refreshData();
+        setErrorMessage(opError.message);
+      } else {
+        setErrorMessage(err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat mendaftar.');
+      }
     } finally {
       setIsSubmitting(false);
     }

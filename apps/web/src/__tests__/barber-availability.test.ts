@@ -22,6 +22,12 @@ import {
   type RawBarberAvailabilityRow,
 } from '../types/barber-availability';
 import { parseAuthoritativeBarbers } from '../lib/barber-parser';
+import {
+  parseBarberOperationalError,
+  formatBarberOperationalErrorMessage,
+  BARBER_OPERATIONAL_ERROR_CODE,
+  BARBER_OPERATIONAL_ERROR_PREFIX,
+} from '../lib/barber-operation-errors';
 
 const TEST_OUTLET_A = '11111111-1111-1111-1111-111111111111';
 const TEST_OUTLET_B = '22222222-2222-2222-2222-222222222222';
@@ -457,5 +463,143 @@ describe('Scenario G: Phase 4A Non-Blocking Picker Behavior', () => {
       'utf-8'
     );
     expect(queueBoardContent).toMatch(/BARBER_AVAILABILITY_LABELS/);
+  });
+});
+
+describe('Phase 4B: Authoritative Barber Availability Enforcement (P0006)', () => {
+  const webSrcDir = path.resolve(__dirname, '..');
+
+  it('defines authoritative P0006 error code and prefix constants', () => {
+    expect(BARBER_OPERATIONAL_ERROR_CODE).toBe('P0006');
+    expect(BARBER_OPERATIONAL_ERROR_PREFIX).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+  });
+
+  it('Rule A: P0006 + SHIFT_ACTIVE is not treated as a valid rejection', () => {
+    const errorA = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: SHIFT_ACTIVE',
+    };
+    expect(parseBarberOperationalError(errorA)).toBeNull();
+  });
+
+  it('Rule B: P0006 + ON_BREAK parses correctly with status ON_BREAK', () => {
+    const errorB = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: ON_BREAK',
+    };
+    const parsed = parseBarberOperationalError(errorB);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    expect(parsed?.status).toBe('ON_BREAK');
+    expect(parsed?.message).toContain('Sedang Istirahat');
+  });
+
+  it('Rule C: P0006 + UNCONFIGURED parses correctly with status UNCONFIGURED', () => {
+    const errorC = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: UNCONFIGURED',
+    };
+    const parsed = parseBarberOperationalError(errorC);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    expect(parsed?.status).toBe('UNCONFIGURED');
+    expect(parsed?.message).toContain('Jadwal Belum Diatur');
+  });
+
+  it('Rule D: P0006 + OUTSIDE_SHIFT parses correctly with status OUTSIDE_SHIFT', () => {
+    const errorD = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: OUTSIDE_SHIFT',
+    };
+    const parsed = parseBarberOperationalError(errorD);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    expect(parsed?.status).toBe('OUTSIDE_SHIFT');
+    expect(parsed?.message).toContain('Di Luar Shift');
+  });
+
+  it('Rule E: P0006 + ON_LEAVE parses correctly with status ON_LEAVE', () => {
+    const errorE = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: ON_LEAVE',
+    };
+    const parsed = parseBarberOperationalError(errorE);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    expect(parsed?.status).toBe('ON_LEAVE');
+    expect(parsed?.message).toContain('Sedang Cuti');
+  });
+
+  it('Rule F: P0006 with unknown status fails closed with status = null', () => {
+    const errorF = {
+      code: 'P0006',
+      message: 'BARBER_NOT_OPERATIONALLY_AVAILABLE: UNKNOWN_STATUS_XYZ',
+    };
+    const parsed = parseBarberOperationalError(errorF);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    expect(parsed?.status).toBeNull();
+    expect(parsed?.message).toContain('kendala ketersediaan operasional');
+  });
+
+  it('Rule G: generic Supabase errors return null', () => {
+    expect(parseBarberOperationalError(null)).toBeNull();
+    expect(parseBarberOperationalError(undefined)).toBeNull();
+    expect(parseBarberOperationalError({ code: '42501', message: 'permission denied' })).toBeNull();
+    expect(parseBarberOperationalError({ code: '22023', message: 'invalid input' })).toBeNull();
+    expect(parseBarberOperationalError(new Error('Network disconnected'))).toBeNull();
+    expect(parseBarberOperationalError('generic error string')).toBeNull();
+  });
+
+  it('formats contextual Indonesian messages correctly for walkin and called flows', () => {
+    expect(formatBarberOperationalErrorMessage('ON_BREAK', 'walkin')).toBe(
+      'Kapster tidak dapat ditugaskan saat ini. Status: Sedang Istirahat.'
+    );
+    expect(formatBarberOperationalErrorMessage('ON_BREAK', 'called', 'Budi')).toBe(
+      'Antrean belum dapat dipanggil karena kapster Budi sedang istirahat.'
+    );
+    expect(formatBarberOperationalErrorMessage('UNCONFIGURED', 'called')).toBe(
+      'Antrean belum dapat dipanggil karena jadwal kapster belum diatur.'
+    );
+    expect(formatBarberOperationalErrorMessage(null, 'walkin')).toBe(
+      'Kapster tidak dapat ditugaskan saat ini karena kendala ketersediaan operasional.'
+    );
+  });
+
+  it('Rule H: UI source audit ensures walkin and queue mutations handle P0006', () => {
+    const walkinModalContent = fs.readFileSync(
+      path.join(webSrcDir, 'components/queue/walkin-modal.tsx'),
+      'utf-8'
+    );
+    expect(walkinModalContent).toMatch(/parseBarberOperationalError/);
+    expect(walkinModalContent).toMatch(/refreshData/);
+
+    const queuePageContent = fs.readFileSync(
+      path.join(webSrcDir, 'app/queue/page.tsx'),
+      'utf-8'
+    );
+    expect(queuePageContent).toMatch(/parseBarberOperationalError/);
+    expect(queuePageContent).toMatch(/formatBarberOperationalErrorMessage/);
+    expect(queuePageContent).toMatch(/refreshData/);
+  });
+
+  it('Rule I: verifies no local clock is used for availability decisions', () => {
+    const errorParserContent = fs.readFileSync(
+      path.join(webSrcDir, 'lib/barber-operation-errors.ts'),
+      'utf-8'
+    );
+    expect(errorParserContent).not.toMatch(/new Date\(\)/);
+    expect(errorParserContent).not.toMatch(/Date\.now\(\)/);
+    expect(errorParserContent).not.toMatch(/\.getHours\(\)/);
+    expect(errorParserContent).not.toMatch(/\.getDay\(\)/);
+
+    const barberParserContent = fs.readFileSync(
+      path.join(webSrcDir, 'lib/barber-parser.ts'),
+      'utf-8'
+    );
+    expect(barberParserContent).not.toMatch(/new Date\(\)/);
+    expect(barberParserContent).not.toMatch(/Date\.now\(\)/);
+    expect(barberParserContent).not.toMatch(/\.getHours\(\)/);
+    expect(barberParserContent).not.toMatch(/\.getDay\(\)/);
   });
 });

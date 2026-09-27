@@ -13,6 +13,10 @@ import { AppointmentCalendar } from '../../components/queue/appointment-calendar
 import { WalkinModal } from '../../components/queue/walkin-modal';
 import { AppointmentModal } from '../../components/queue/appointment-modal';
 import {
+  parseBarberOperationalError,
+  formatBarberOperationalErrorMessage,
+} from '../../lib/barber-operation-errors';
+import {
   Calendar,
   Users,
   Scissors,
@@ -24,7 +28,7 @@ import {
 } from 'lucide-react';
 
 function QueueManagementContent(): React.JSX.Element {
-  const { supabase, currentOutlet } = usePos();
+  const { supabase, currentOutlet, barbers, refreshData } = usePos();
 
   const [activeTab, setActiveTab] = useState<'BOARD' | 'APPOINTMENTS' | 'HISTORY'>('BOARD');
 
@@ -324,6 +328,23 @@ function QueueManagementContent(): React.JSX.Element {
       );
 
       if (error) {
+        const opError = parseBarberOperationalError(error);
+        if (opError) {
+          const targetBarber = barbers.find((b) => b.id === targetBarberId);
+          const contextualMsg = formatBarberOperationalErrorMessage(
+            opError.status,
+            'called',
+            targetBarber?.full_name || currentQueue.barber_name
+          );
+
+          await refreshData();
+          setFeedback({
+            type: 'error',
+            message: contextualMsg,
+          });
+          return;
+        }
+
         throw new Error(error.message || 'Gagal memperbarui status antrean.');
       }
 
@@ -334,6 +355,25 @@ function QueueManagementContent(): React.JSX.Element {
       });
     } catch (err: unknown) {
       console.error('Update queue error:', err);
+      const opError = parseBarberOperationalError(err);
+      if (opError) {
+        const targetBarberId = newStatus === 'CALLED'
+          ? (barberId ?? currentQueue.barber_id ?? null)
+          : null;
+        const targetBarber = barbers.find((b) => b.id === targetBarberId);
+        const contextualMsg = formatBarberOperationalErrorMessage(
+          opError.status,
+          'called',
+          targetBarber?.full_name || currentQueue.barber_name
+        );
+        void refreshData();
+        setFeedback({
+          type: 'error',
+          message: contextualMsg,
+        });
+        return;
+      }
+
       const errorMessage =
         err instanceof Error
           ? err.message
