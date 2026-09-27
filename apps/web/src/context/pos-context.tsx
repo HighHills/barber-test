@@ -71,6 +71,106 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
   const [simulatedRole, setSimulatedRole] = useState<string | null>(null);
   const [simulatedOutletId, setSimulatedOutletId] = useState<string | null>(null);
 
+  const loadBarbers = useCallback(async (outletId: string): Promise<void> => {
+    if (!outletId) {
+      setBarbers([]);
+      return;
+    }
+
+    try {
+      const { data, error: barberErr } = await supabase
+        .from('employee_outlets')
+        .select(`
+          employee_id,
+          outlet_id,
+          is_active,
+          employees!inner (
+            id,
+            employee_code,
+            full_name,
+            position,
+            is_active
+          )
+        `)
+        .eq('outlet_id', outletId)
+        .eq('is_active', true);
+
+      if (barberErr) {
+        setBarbers([]);
+        throw barberErr;
+      }
+
+      const seen = new Set<string>();
+      const nextBarbers: BarberEmployee[] = [];
+
+      for (const row of (data || []) as Array<{
+        employee_id: string;
+        outlet_id: string;
+        is_active: boolean;
+        employees:
+          | {
+              id: string;
+              employee_code: string;
+              full_name: string;
+              position: string;
+              is_active: boolean;
+            }
+          | {
+              id: string;
+              employee_code: string;
+              full_name: string;
+              position: string;
+              is_active: boolean;
+            }[]
+          | null;
+      }>) {
+        const employeeRelations = Array.isArray(row.employees)
+          ? row.employees
+          : row.employees
+          ? [row.employees]
+          : [];
+
+        if (employeeRelations.length !== 1) {
+          setBarbers([]);
+          throw new Error('Data kapster tidak konsisten: relasi employee tidak valid.');
+        }
+
+        const employee = employeeRelations[0];
+
+        if (row.outlet_id !== outletId || !row.is_active || !employee.is_active) {
+          continue;
+        }
+
+        const position = employee.position.trim().toLowerCase();
+        const isBarber =
+          position.includes('barber') || position.includes('kapster');
+
+        if (!isBarber) {
+          continue;
+        }
+
+        if (seen.has(employee.id)) {
+          setBarbers([]);
+          throw new Error('Data kapster tidak konsisten: ditemukan duplikasi penugasan.');
+        }
+
+        seen.add(employee.id);
+        nextBarbers.push(employee as BarberEmployee);
+      }
+
+      nextBarbers.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setBarbers(nextBarbers);
+    } catch (err: unknown) {
+      console.error('Error loading outlet barbers:', err);
+      setBarbers([]);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memuat daftar kapster cabang.'
+      );
+    }
+  }, [supabase]);
+
   // 1. Initial auth listener & user session loading
   useEffect(() => {
     let isMounted = true;
@@ -240,15 +340,11 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
         setPaymentMethods(pmsData as PaymentMethod[]);
       }
 
-      // 2.5 Fetch barbers
-      const { data: empData, error: empErr } = await supabase
-        .from('employees')
-        .select('id, employee_code, full_name, position, is_active')
-        .eq('is_active', true)
-        .order('full_name');
-
-      if (!empErr && empData) {
-        setBarbers(empData as BarberEmployee[]);
+      // 2.5 Load barbers strictly from active assignments of the selected outlet.
+      if (selectedOutlet) {
+        await loadBarbers(selectedOutlet.id);
+      } else {
+        setBarbers([]);
       }
 
       // 2.6 If outlet selected, load cash register & active session
@@ -262,7 +358,7 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       setIsLoading(false);
       hasLoadedInitial.current = true;
     }
-  }, [user, supabase, currentOutlet]);
+  }, [user, supabase, currentOutlet, loadBarbers]);
 
   const loadRegisterAndSession = async (outletId: string) => {
     try {
@@ -370,7 +466,8 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       return;
     }
     setCurrentOutletState(outlet);
-    loadRegisterAndSession(outlet.id);
+    void loadBarbers(outlet.id);
+    void loadRegisterAndSession(outlet.id);
   };
 
   // 3. Open Cash Session
