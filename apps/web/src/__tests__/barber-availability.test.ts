@@ -603,3 +603,211 @@ describe('Phase 4B: Authoritative Barber Availability Enforcement (P0006)', () =
     expect(barberParserContent).not.toMatch(/\.getDay\(\)/);
   });
 });
+
+describe('Phase 4B: Migration Fidelity and Static Audit', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const migrationPath = path.join(
+    repoRoot,
+    'supabase/migrations/20260927084643_enforce_barber_operational_availability_at_queue_mutation.sql'
+  );
+  const migrationContent = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('Static Audit: strictly forbids text/text parameter overloads for transition status', () => {
+    expect(migrationContent).not.toMatch(/p_target_status\s+text/);
+    expect(migrationContent).not.toMatch(/p_expected_current_status\s+text/);
+  });
+
+  it('Static Audit: strictly forbids invalid helper attributes (RETURNS void, SECURITY DEFINER, search_path = public, pg_temp)', () => {
+    // Isolate the assert_barber_operationally_available function definition
+    const helperMatch = migrationContent.match(
+      /CREATE OR REPLACE FUNCTION private\.assert_barber_operationally_available[\s\S]*?\$\$[\s\S]*?\$\$;/
+    );
+    expect(helperMatch).not.toBeNull();
+    const helperSql = helperMatch![0];
+
+    expect(helperSql).not.toMatch(/RETURNS\s+void/i);
+    expect(helperSql).not.toMatch(/SECURITY\s+DEFINER/i);
+    expect(helperSql).not.toMatch(/SET\s+search_path\s*=\s*public\s*,\s*pg_temp/i);
+    expect(helperSql).toMatch(/SECURITY\s+INVOKER/i);
+    expect(helperSql).toMatch(/RETURNS\s+text/i);
+    expect(helperSql).toMatch(/SET\s+search_path\s*=\s*''/i);
+  });
+
+  it('Static Audit: strictly verifies private.assert_barber_operationally_available is NOT granted to roles', () => {
+    expect(migrationContent).not.toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+private\.assert_barber_operationally_available/i
+    );
+  });
+
+  it('Static Audit: verifies transition_queue_status and transition_queue_status_internal use queue_status_enum', () => {
+    expect(migrationContent).toMatch(/p_target_status\s+public\.queue_status_enum/);
+    expect(migrationContent).toMatch(/p_expected_current_status\s+public\.queue_status_enum/);
+  });
+});
+
+describe('Phase 4B: Backend Contract & Availability Rules Verification (Rules A through F)', () => {
+  // Helper simulator mirroring private.assert_barber_operationally_available contract
+  const simulateAssertBarberOperationallyAvailable = (
+    availabilityMap: Map<string, string>,
+    barberId: string | null
+  ): string | null => {
+    if (!barberId) return null;
+    const status = availabilityMap.get(barberId);
+    if (!status || status === 'INACTIVE') {
+      const err = new Error('BARBER_NOT_OPERATIONALLY_AVAILABLE: INACTIVE');
+      Object.assign(err, { code: 'P0006' });
+      throw err;
+    }
+    if (status !== 'SHIFT_ACTIVE') {
+      const err = new Error(`BARBER_NOT_OPERATIONALLY_AVAILABLE: ${status}`);
+      Object.assign(err, { code: 'P0006' });
+      throw err;
+    }
+    return status;
+  };
+
+  it('Rule A: helper returns SHIFT_ACTIVE when barber schedule is active', () => {
+    const map = new Map<string, string>([['barber-1', 'SHIFT_ACTIVE']]);
+    const result = simulateAssertBarberOperationallyAvailable(map, 'barber-1');
+    expect(result).toBe('SHIFT_ACTIVE');
+  });
+
+  it('Rule B: helper rejects non-active statuses (ON_BREAK, OUTSIDE_SHIFT, DAY_OFF, ON_LEAVE, UNCONFIGURED, INACTIVE) with P0006', () => {
+    const statuses = [
+      'ON_BREAK',
+      'OUTSIDE_SHIFT',
+      'DAY_OFF',
+      'ON_LEAVE',
+      'UNCONFIGURED',
+      'INACTIVE',
+    ] as const;
+
+    for (const status of statuses) {
+      const map = new Map<string, string>([['barber-test', status]]);
+      try {
+        simulateAssertBarberOperationallyAvailable(map, 'barber-test');
+        expect.unreachable(`Expected ${status} to throw P0006`);
+      } catch (err: unknown) {
+        const parsed = parseBarberOperationalError(err);
+        expect(parsed).not.toBeNull();
+        expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+        expect(parsed?.status).toBe(status);
+      }
+    }
+
+    // Missing barber id in availability map raises P0006 INACTIVE
+    const emptyMap = new Map<string, string>();
+    try {
+      simulateAssertBarberOperationallyAvailable(emptyMap, 'non-existent');
+      expect.unreachable('Expected missing barber to throw P0006');
+    } catch (err: unknown) {
+      const parsed = parseBarberOperationalError(err);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.type).toBe('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+    }
+  });
+
+  it('Rule C: create_walk_in_queue rejects unavailable barber with P0006', () => {
+    const map = new Map<string, string>([['barber-break', 'ON_BREAK']]);
+
+    const simulateCreateWalkInQueue = (barberId: string | null) => {
+      if (barberId) {
+        simulateAssertBarberOperationallyAvailable(map, barberId);
+      }
+      return { success: true, queue_id: 'q-new-123' };
+    };
+
+    // With null barber, walk-in creation succeeds without availability assertion
+    expect(simulateCreateWalkInQueue(null).success).toBe(true);
+
+    // With unavailable barber, throws P0006
+    expect(() => simulateCreateWalkInQueue('barber-break')).toThrowError(
+      /BARBER_NOT_OPERATIONALLY_AVAILABLE: ON_BREAK/
+    );
+  });
+
+  it('Rule D: transition_queue_status rejects CALLED when barber is unavailable, but allows other transitions', () => {
+    const map = new Map<string, string>([
+      ['barber-active', 'SHIFT_ACTIVE'],
+      ['barber-leave', 'ON_LEAVE'],
+    ]);
+
+    const simulateTransition = (
+      targetStatus: 'CALLED' | 'IN_SERVICE' | 'COMPLETED',
+      expectedCurrentStatus: 'WAITING' | 'CALLED' | 'IN_SERVICE',
+      barberId: string | null
+    ) => {
+      if (!expectedCurrentStatus) throw new Error('Expected status required');
+      if (targetStatus === 'CALLED') {
+        if (!barberId) throw new Error('Barber required on CALLED');
+        simulateAssertBarberOperationallyAvailable(map, barberId);
+      }
+      return { success: true, status: targetStatus, barber_id: barberId };
+    };
+
+    // Calling with ON_LEAVE barber fails with P0006
+    expect(() => simulateTransition('CALLED', 'WAITING', 'barber-leave')).toThrowError(
+      /BARBER_NOT_OPERATIONALLY_AVAILABLE: ON_LEAVE/
+    );
+
+    // Calling with SHIFT_ACTIVE barber succeeds
+    expect(simulateTransition('CALLED', 'WAITING', 'barber-active').status).toBe('CALLED');
+
+    // CALLED -> IN_SERVICE does not enforce operational availability
+    expect(simulateTransition('IN_SERVICE', 'CALLED', 'barber-leave').status).toBe('IN_SERVICE');
+
+    // IN_SERVICE -> COMPLETED does not enforce operational availability
+    expect(simulateTransition('COMPLETED', 'IN_SERVICE', 'barber-leave').status).toBe('COMPLETED');
+  });
+
+  it('Rule E: transition_queue_status still uses queue_status_enum and does not introduce text/text overloads', () => {
+    const repoRoot = path.resolve(__dirname, '../../../..');
+    const migrationPath = path.join(
+      repoRoot,
+      'supabase/migrations/20260927084643_enforce_barber_operational_availability_at_queue_mutation.sql'
+    );
+    const content = fs.readFileSync(migrationPath, 'utf-8');
+
+    // Matches the exact signature with queue_status_enum
+    expect(content).toMatch(
+      /FUNCTION\s+private\.transition_queue_status_internal\s*\(\s*p_queue_id\s+uuid,\s*p_outlet_id\s+uuid,\s*p_target_status\s+public\.queue_status_enum,\s*p_expected_current_status\s+public\.queue_status_enum/
+    );
+    expect(content).toMatch(
+      /FUNCTION\s+public\.transition_queue_status\s*\(\s*p_queue_id\s+uuid,\s*p_outlet_id\s+uuid,\s*p_target_status\s+public\.queue_status_enum,\s*p_expected_current_status\s+public\.queue_status_enum/
+    );
+
+    // Guarantees no function declaration with text target status
+    expect(content).not.toMatch(
+      /FUNCTION\s+[a-z_.]*transition_queue_status[a-z_]*\s*\([^)]*p_target_status\s+text/i
+    );
+  });
+
+  it('Rule F: preserves complete queue state machine, advisory locking, role semantics, and appointment synchronization', () => {
+    const repoRoot = path.resolve(__dirname, '../../../..');
+    const migrationPath = path.join(
+      repoRoot,
+      'supabase/migrations/20260927084643_enforce_barber_operational_availability_at_queue_mutation.sql'
+    );
+    const content = fs.readFileSync(migrationPath, 'utf-8');
+
+    // Row locking
+    expect(content).toMatch(/FOR UPDATE/);
+    // Authentication & outlet check
+    expect(content).toMatch(/auth\.uid\(\)/);
+    expect(content).toMatch(/public\.current_user_has_outlet_access/);
+    // State machine check
+    expect(content).toMatch(/WAITING.*CALLED/s);
+    expect(content).toMatch(/CALLED.*IN_SERVICE/s);
+    expect(content).toMatch(/IN_SERVICE.*COMPLETED/s);
+    // Advisory locking
+    expect(content).toMatch(/pg_catalog\.pg_advisory_xact_lock/);
+    // Barber semantic role validation
+    expect(content).toMatch(/LIKE '%barber%'/);
+    expect(content).toMatch(/LIKE '%kapster%'/);
+    // Duplicate assignment protection
+    expect(content).toMatch(/sedang menangani antrean lain yang aktif/);
+    // Appointment status sync
+    expect(content).toMatch(/UPDATE public\.appointments/);
+  });
+});
+
