@@ -15,7 +15,6 @@ CREATE POLICY employees_select
       SELECT 1
       FROM public.employee_outlets eo
       WHERE eo.employee_id = employees.id
-        AND eo.is_active = TRUE
         AND public.current_user_has_outlet_access(eo.outlet_id)
     )
   );
