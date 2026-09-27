@@ -1,13 +1,13 @@
 /**
  * Verification Test Suite for Web Barber Operational Availability (Phase 4A)
  * Covers:
- * - Contract & Enum Validation
  * - Scenario A: Budi & Rian = UNCONFIGURED
  * - Scenario B: All 7 Availability Statuses (A through G)
- * - Scenario C: Fail-Closed Enforcement (H through L)
+ * - Scenario C: Fail-Closed Enforcement (H through N)
  * - Scenario D: Outlet Isolation & Switching
  * - Scenario E: Zero Device Clock Dependency
- * - Scenario F: Static Codebase Audit (No duplicate queries, non-blocking picker)
+ * - Scenario F: Static Codebase Audit (No duplicate queries, single source of truth)
+ * - Scenario G: Phase 4A Non-Blocking Selection Behavior
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,8 +20,8 @@ import {
   BARBER_AVAILABILITY_BADGE_CLASSES,
   isValidBarberAvailabilityStatus,
   type RawBarberAvailabilityRow,
-} from '../apps/web/src/types/barber-availability';
-import { parseAuthoritativeBarbers } from '../apps/web/src/lib/barber-parser';
+} from '../types/barber-availability';
+import { parseAuthoritativeBarbers } from '../lib/barber-parser';
 
 const TEST_OUTLET_A = '11111111-1111-1111-1111-111111111111';
 const TEST_OUTLET_B = '22222222-2222-2222-2222-222222222222';
@@ -35,15 +35,12 @@ function createMockRow(overrides: Partial<RawBarberAvailabilityRow> = {}): RawBa
     barber_position: 'Kapster',
     employee_is_active: true,
     assignment_is_active: true,
-    is_primary_outlet: true,
     schedule_configured: true,
     today_schedule_active: true,
     shift_start: '09:00:00',
     shift_end: '18:00:00',
     break_start: '12:00:00',
     break_end: '13:00:00',
-    is_on_leave: false,
-    leave_type: null,
     availability_status: 'SHIFT_ACTIVE',
     is_available_now: true,
     observed_at: '2026-09-27T10:00:00Z',
@@ -118,8 +115,6 @@ describe('Scenario A: Budi & Rian = UNCONFIGURED', () => {
         shift_end: null,
         break_start: null,
         break_end: null,
-        is_on_leave: false,
-        leave_type: null,
         availability_status: 'UNCONFIGURED',
         is_available_now: false,
       }),
@@ -133,8 +128,6 @@ describe('Scenario A: Budi & Rian = UNCONFIGURED', () => {
         shift_end: null,
         break_start: null,
         break_end: null,
-        is_on_leave: false,
-        leave_type: null,
         availability_status: 'UNCONFIGURED',
         is_available_now: false,
       }),
@@ -201,8 +194,6 @@ describe('Scenario B: All 7 Availability Statuses (A through G)', () => {
     const raw = [
       createMockRow({
         availability_status: 'ON_LEAVE',
-        is_on_leave: true,
-        leave_type: 'ANNUAL',
         is_available_now: false,
       }),
     ];
@@ -240,7 +231,7 @@ describe('Scenario B: All 7 Availability Statuses (A through G)', () => {
   });
 });
 
-describe('Scenario C: Fail Closed Rules (H through L)', () => {
+describe('Scenario C: Fail Closed Rules (H through N)', () => {
   it('Rule H: returns empty array on null/empty/invalid input', () => {
     expect(parseAuthoritativeBarbers(null, TEST_OUTLET_A).barbers).toEqual([]);
     expect(parseAuthoritativeBarbers(null, TEST_OUTLET_A).error).toBeDefined();
@@ -278,31 +269,46 @@ describe('Scenario C: Fail Closed Rules (H through L)', () => {
   });
 
   it('Rule L: fails closed on invalid availability_status enum', () => {
-    const raw = [
-      createMockRow({ availability_status: 'UNKNOWN_STATUS' as any }),
-    ];
+    const malformedStatusRow = {
+      ...createMockRow(),
+      availability_status: 'UNKNOWN_STATUS',
+    } as unknown as RawBarberAvailabilityRow;
+    const raw = [malformedStatusRow];
     const result = parseAuthoritativeBarbers(raw, TEST_OUTLET_A);
     expect(result.barbers).toEqual([]);
     expect(result.error).toContain('di luar kontrak');
   });
 
   it('Rule M: fails closed on missing operational metadata (observed_at, local_date, etc.)', () => {
-    const missingMetadata1 = [createMockRow({ observed_at: null as any })];
+    const missingMetadata1 = [
+      { ...createMockRow(), observed_at: null } as unknown as RawBarberAvailabilityRow,
+    ];
     expect(parseAuthoritativeBarbers(missingMetadata1, TEST_OUTLET_A).barbers).toEqual([]);
     expect(parseAuthoritativeBarbers(missingMetadata1, TEST_OUTLET_A).error).toContain('metadata');
 
-    const missingMetadata2 = [createMockRow({ local_date: null as any })];
+    const missingMetadata2 = [
+      { ...createMockRow(), local_date: null } as unknown as RawBarberAvailabilityRow,
+    ];
     expect(parseAuthoritativeBarbers(missingMetadata2, TEST_OUTLET_A).barbers).toEqual([]);
 
-    const missingMetadata3 = [createMockRow({ outlet_timezone: null as any })];
+    const missingMetadata3 = [
+      { ...createMockRow(), outlet_timezone: null } as unknown as RawBarberAvailabilityRow,
+    ];
     expect(parseAuthoritativeBarbers(missingMetadata3, TEST_OUTLET_A).barbers).toEqual([]);
   });
 
-  it('Rule N: fails closed on missing employee_id', () => {
-    const raw = [createMockRow({ employee_id: '' as any })];
-    const result = parseAuthoritativeBarbers(raw, TEST_OUTLET_A);
-    expect(result.barbers).toEqual([]);
-    expect(result.error).toContain('employee_id wajib ada');
+  it('Rule N: fails closed on missing or empty employee_id', () => {
+    const rawEmpty = [createMockRow({ employee_id: '' })];
+    const resultEmpty = parseAuthoritativeBarbers(rawEmpty, TEST_OUTLET_A);
+    expect(resultEmpty.barbers).toEqual([]);
+    expect(resultEmpty.error).toContain('employee_id wajib ada');
+
+    const rawNull = [
+      { ...createMockRow(), employee_id: null } as unknown as RawBarberAvailabilityRow,
+    ];
+    const resultNull = parseAuthoritativeBarbers(rawNull, TEST_OUTLET_A);
+    expect(resultNull.barbers).toEqual([]);
+    expect(resultNull.error).toContain('employee_id wajib ada');
   });
 });
 
@@ -353,10 +359,27 @@ describe('Scenario E: Zero Device Clock Dependency', () => {
     expect(b.day_of_week).toBe(0);
     expect(b.availability_status).toBe('OUTSIDE_SHIFT');
   });
+
+  it('guarantees parser does not evaluate Date methods or browser clock', () => {
+    const originalDateNow = Date.now;
+    let clockTouched = false;
+    Date.now = () => {
+      clockTouched = true;
+      return 0;
+    };
+
+    try {
+      const raw = [createMockRow()];
+      parseAuthoritativeBarbers(raw, TEST_OUTLET_A);
+      expect(clockTouched).toBe(false);
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
 });
 
-describe('Scenario F: Static Codebase Audit (No Duplicate Queries & Single Source of Truth)', () => {
-  const webSrcDir = path.resolve(__dirname, '../apps/web/src');
+describe('Scenario F: Single Source of Truth & Static Codebase Audit', () => {
+  const webSrcDir = path.resolve(__dirname, '..');
 
   it('verifies pos-screen.tsx has no direct employee table query and uses usePos', () => {
     const posScreenContent = fs.readFileSync(
@@ -386,6 +409,25 @@ describe('Scenario F: Static Codebase Audit (No Duplicate Queries & Single Sourc
     // Verified that setCurrentOutlet clears barbers
     expect(posContextContent).toMatch(/setBarbers\(\[\]\)/);
   });
+});
+
+describe('Scenario G: Phase 4A Non-Blocking Picker Behavior', () => {
+  const webSrcDir = path.resolve(__dirname, '..');
+
+  it('allows barbers with non-active operational status to be selected in parser', () => {
+    const raw = [
+      createMockRow({ employee_id: 'emp-off', availability_status: 'DAY_OFF', is_available_now: false }),
+      createMockRow({ employee_id: 'emp-break', availability_status: 'ON_BREAK', is_available_now: false }),
+      createMockRow({ employee_id: 'emp-unconf', availability_status: 'UNCONFIGURED', is_available_now: false }),
+      createMockRow({ employee_id: 'emp-active', availability_status: 'SHIFT_ACTIVE', is_available_now: true }),
+    ];
+    const { barbers } = parseAuthoritativeBarbers(raw, TEST_OUTLET_A);
+    // All 4 active barbers are returned and selectable in Phase 4A
+    expect(barbers).toHaveLength(4);
+    expect(barbers.map((b) => b.id)).toEqual(
+      expect.arrayContaining(['emp-off', 'emp-break', 'emp-unconf', 'emp-active'])
+    );
+  });
 
   it('verifies UI pickers render availability badges and maintain non-blocking selection', () => {
     const barberModalContent = fs.readFileSync(
@@ -394,7 +436,7 @@ describe('Scenario F: Static Codebase Audit (No Duplicate Queries & Single Sourc
     );
     expect(barberModalContent).toMatch(/BARBER_AVAILABILITY_LABELS/);
     expect(barberModalContent).toMatch(/BARBER_AVAILABILITY_BADGE_CLASSES/);
-    // Non-blocking: should not disable barber selection buttons based on availability
+    // Non-blocking: must not disable barber selection buttons based on availability
     expect(barberModalContent).not.toMatch(/disabled=\{!barber\.is_available_now\}/);
 
     const walkinModalContent = fs.readFileSync(
@@ -402,6 +444,7 @@ describe('Scenario F: Static Codebase Audit (No Duplicate Queries & Single Sourc
       'utf-8'
     );
     expect(walkinModalContent).toMatch(/BARBER_AVAILABILITY_LABELS/);
+    expect(walkinModalContent).not.toMatch(/disabled=\{!b\.is_available_now\}/);
 
     const apptModalContent = fs.readFileSync(
       path.join(webSrcDir, 'components/queue/appointment-modal.tsx'),
