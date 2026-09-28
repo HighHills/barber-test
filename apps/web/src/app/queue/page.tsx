@@ -17,6 +17,11 @@ import {
   formatBarberOperationalErrorMessage,
 } from '../../lib/barber-operation-errors';
 import {
+  validateCheckInResponse,
+  mapAppointmentCheckInError,
+  type ValidatedCheckInData,
+} from '../../lib/appointment-checkin-validator';
+import {
   Calendar,
   Users,
   Scissors,
@@ -405,18 +410,61 @@ function QueueManagementContent(): React.JSX.Element {
       });
 
       if (error) {
-        throw new Error(error.message || 'Gagal melakukan check-in janji temu.');
+        await Promise.all([loadQueues(), loadAppointments()]);
+        const opError = parseBarberOperationalError(error);
+        if (opError) {
+          const targetBarber = barbers.find((b) => b.id === (appointment.barber_id ?? null));
+          const contextualMsg = formatBarberOperationalErrorMessage(
+            opError.status,
+            'called',
+            targetBarber?.full_name || appointment.barber_name
+          );
+          setFeedback({
+            type: 'error',
+            message: contextualMsg,
+          });
+          return;
+        }
+
+        const mappedError = mapAppointmentCheckInError(error.message || '');
+        setFeedback({
+          type: 'error',
+          message: mappedError,
+        });
+        return;
       }
 
-      const result = typeof data === 'string' ? JSON.parse(data) : data;
-      const createdQueueId = result?.queue_id || result?.id;
-      const createdQueueNumber = result?.queue_number ?? 0;
+      let parsedPayload: unknown = data;
+      if (typeof data === 'string') {
+        try {
+          parsedPayload = JSON.parse(data);
+        } catch {
+          await Promise.all([loadQueues(), loadAppointments()]);
+          setFeedback({
+            type: 'error',
+            message: 'Format data respons antrean dari server tidak valid.',
+          });
+          return;
+        }
+      }
+
+      const validation = validateCheckInResponse(parsedPayload, appointment.id);
+      if (!validation.valid || !validation.data) {
+        await Promise.all([loadQueues(), loadAppointments()]);
+        setFeedback({
+          type: 'error',
+          message: validation.error || 'Respons server tidak valid saat memproses check-in.',
+        });
+        return;
+      }
+
+      const validated: ValidatedCheckInData = validation.data;
 
       // Save service prefill if queue ID and service exist
-      if (createdQueueId && appointment.service_id) {
+      if (validated.queueId && appointment.service_id) {
         try {
           const queueServices = JSON.parse(localStorage.getItem('barber_queue_services') || '{}');
-          queueServices[createdQueueId] = {
+          queueServices[validated.queueId] = {
             service_id: appointment.service_id,
             service_name: appointment.service_name,
             selling_price: 0, // default or catalog price
@@ -430,19 +478,36 @@ function QueueManagementContent(): React.JSX.Element {
       await Promise.all([loadQueues(), loadAppointments()]);
       setFeedback({
         type: 'success',
-        message: `Janji temu #${appointment.appointment_number} (${appointment.customer_name}) berhasil check-in sebagai Antrean Kursi #${createdQueueNumber}!`,
+        message: `Janji temu #${appointment.appointment_number} (${appointment.customer_name}) berhasil check-in sebagai Antrean Kursi #${validated.queueNumber}!`,
       });
       setActiveTab('BOARD');
     } catch (err: unknown) {
       console.error('Check-in error:', err);
       // Refresh state so operator sees true state in case of conflict
       await Promise.all([loadQueues(), loadAppointments()]);
-      const errorMessage =
+
+      const opError = parseBarberOperationalError(err);
+      if (opError) {
+        const targetBarber = barbers.find((b) => b.id === (appointment.barber_id ?? null));
+        const contextualMsg = formatBarberOperationalErrorMessage(
+          opError.status,
+          'called',
+          targetBarber?.full_name || appointment.barber_name
+        );
+        setFeedback({
+          type: 'error',
+          message: contextualMsg,
+        });
+        return;
+      }
+
+      const rawMsg =
         err instanceof Error
           ? err.message
           : typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message: unknown }).message)
-          : 'Gagal melakukan check-in janji temu.';
+          : '';
+      const errorMessage = mapAppointmentCheckInError(rawMsg);
       setFeedback({
         type: 'error',
         message: errorMessage,
