@@ -696,6 +696,42 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     expect(internalSql).toMatch(/FOR UPDATE/);
   });
 
+  it('Static Audit: verifies private.transition_queue_status_internal has strict owner-only ACL parity', () => {
+    // REVOKE includes PUBLIC, anon, authenticated, and service_role
+    expect(migrationContent).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+private\.transition_queue_status_internal\s*\([\s\S]*?\)\s*FROM\s+PUBLIC,\s*anon,\s*authenticated,\s*service_role;/i
+    );
+
+    // Strictly verifies there is NO GRANT EXECUTE on private.transition_queue_status_internal
+    expect(migrationContent).not.toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+private\.transition_queue_status_internal/i
+    );
+
+    // Verifies helper private.assert_barber_operationally_available ACL remains owner-only
+    expect(migrationContent).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+private\.assert_barber_operationally_available\(uuid,\s*uuid\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated,\s*service_role;/i
+    );
+    expect(migrationContent).not.toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+private\.assert_barber_operationally_available/i
+    );
+
+    // Wrapper public.transition_queue_status remains authenticated + service_role
+    expect(migrationContent).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.transition_queue_status[\s\S]*?FROM\s+PUBLIC;/i
+    );
+    expect(migrationContent).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.transition_queue_status[\s\S]*?FROM\s+anon;/i
+    );
+    expect(migrationContent).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.transition_queue_status[\s\S]*?TO\s+authenticated,\s*service_role;/i
+    );
+
+    // public.create_walk_in_queue remains authenticated + service_role
+    expect(migrationContent).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.create_walk_in_queue[\s\S]*?TO\s+authenticated,\s*service_role;/i
+    );
+  });
+
   it('Static Audit: verifies wrapper transition function signature, DEFAULT NULL, and LANGUAGE sql delegation', () => {
     const wrapperMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION public\.transition_queue_status[\s\S]*?\$\$[\s\S]*?\$\$;/

@@ -390,8 +390,14 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION private.transition_queue_status_internal(uuid, uuid, public.queue_status_enum, public.queue_status_enum, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION private.transition_queue_status_internal(uuid, uuid, public.queue_status_enum, public.queue_status_enum, uuid) TO service_role;
+REVOKE ALL ON FUNCTION private.transition_queue_status_internal(
+  uuid,
+  uuid,
+  public.queue_status_enum,
+  public.queue_status_enum,
+  uuid
+)
+FROM PUBLIC, anon, authenticated, service_role;
 
 -- ============================================================================
 -- 4. Authoritative Public Wrapper: transition_queue_status
