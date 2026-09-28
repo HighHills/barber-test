@@ -800,15 +800,20 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     );
   });
 
-  it('Static Audit: verifies non-CALLED barber rejection with P0004', () => {
+  it('Static Audit: verifies exact production IF p_target_status = CALLED ... ELSIF p_barber_id IS NOT NULL control flow', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
     expect(internalMatch).not.toBeNull();
     const internalSql = internalMatch![0];
 
+    // Proves exact IF p_target_status = 'CALLED' ... ELSIF p_barber_id IS NOT NULL structure
     expect(internalSql).toMatch(
-      /IF\s+p_target_status\s*<>\s*'CALLED'::public\.queue_status_enum\s+AND\s+p_barber_id\s+IS\s+NOT\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'Barber assignment is only allowed when transitioning to CALLED'\s*USING\s+ERRCODE\s*=\s*'P0004';/i
+      /IF\s+p_target_status\s*=\s*'CALLED'::public\.queue_status_enum\s+THEN[\s\S]*?ELSIF\s+p_barber_id\s+IS\s+NOT\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'Barber assignment is only allowed when transitioning to CALLED'\s*USING\s+ERRCODE\s*=\s*'P0004';\s*END\s+IF;/i
+    );
+    // Explicitly forbids the flawed `p_target_status <> 'CALLED' AND ...` pattern
+    expect(internalSql).not.toMatch(
+      /p_target_status\s*<>\s*'CALLED'/i
     );
   });
 
@@ -1086,6 +1091,79 @@ describe('Phase 4B: Backend Contract & Availability Rules Verification (Rules A 
     expect(verifyOptionalExpected('WAITING', null)).toBe(true);
     expect(verifyOptionalExpected('WAITING', 'WAITING')).toBe(true);
     expect(() => verifyOptionalExpected('WAITING', 'CALLED')).toThrowError(/QUEUE_STATUS_MISMATCH/);
+  });
+
+  it('Rule F: JS contract simulation proving exact IF CALLED ... ELSIF barber IS NOT NULL semantics', () => {
+    // Exact JS simulation of production PL/pgSQL:
+    // IF p_target_status = 'CALLED' THEN
+    //   IF p_barber_id IS NULL THEN RAISE 22004
+    //   ... enters CALLED branch
+    // ELSIF p_barber_id IS NOT NULL THEN
+    //   RAISE P0004 'Barber assignment is only allowed when transitioning to CALLED'
+    // END IF;
+    const simulateBarberAssignmentGuard = (
+      targetStatus: 'CALLED' | 'IN_SERVICE' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | null,
+      barberId: string | null
+    ): { branch: 'CALLED_BRANCH' | 'NO_OP' } => {
+      // In SQL ternary logic: (NULL = 'CALLED') is NULL (falsy in IF).
+      // Control only enters the first IF if targetStatus is non-null and equals 'CALLED'.
+      if (targetStatus === 'CALLED') {
+        if (barberId === null) {
+          const err = new Error('A barber is required when calling a queue');
+          Object.assign(err, { code: '22004' });
+          throw err;
+        }
+        return { branch: 'CALLED_BRANCH' };
+      } else if (barberId !== null) {
+        const err = new Error('Barber assignment is only allowed when transitioning to CALLED');
+        Object.assign(err, { code: 'P0004' });
+        throw err;
+      }
+      return { branch: 'NO_OP' };
+    };
+
+    // 1. CALLED + barber -> enters CALLED branch
+    expect(simulateBarberAssignmentGuard('CALLED', 'barber-001')).toEqual({
+      branch: 'CALLED_BRANCH',
+    });
+
+    // 2. CALLED + null barber -> 22004
+    try {
+      simulateBarberAssignmentGuard('CALLED', null);
+      expect.unreachable('Expected CALLED + null barber to throw 22004');
+    } catch (err: unknown) {
+      expect((err as { code?: string }).code).toBe('22004');
+      expect((err as Error).message).toBe('A barber is required when calling a queue');
+    }
+
+    // 3. non-CALLED + barber -> P0004
+    for (const nonCalledStatus of ['IN_SERVICE', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] as const) {
+      try {
+        simulateBarberAssignmentGuard(nonCalledStatus, 'barber-001');
+        expect.unreachable(`Expected ${nonCalledStatus} + barber to throw P0004`);
+      } catch (err: unknown) {
+        expect((err as { code?: string }).code).toBe('P0004');
+        expect((err as Error).message).toBe(
+          'Barber assignment is only allowed when transitioning to CALLED'
+        );
+      }
+    }
+
+    // 4. NULL target + barber -> P0004
+    try {
+      simulateBarberAssignmentGuard(null, 'barber-001');
+      expect.unreachable('Expected NULL target + barber to throw P0004');
+    } catch (err: unknown) {
+      expect((err as { code?: string }).code).toBe('P0004');
+      expect((err as Error).message).toBe(
+        'Barber assignment is only allowed when transitioning to CALLED'
+      );
+    }
+
+    // 5. NULL target + null barber does not trigger the barber-assignment P0004 branch
+    expect(simulateBarberAssignmentGuard(null, null)).toEqual({
+      branch: 'NO_OP',
+    });
   });
 });
 

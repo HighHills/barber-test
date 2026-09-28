@@ -260,13 +260,7 @@ BEGIN
       USING ERRCODE = 'P0004';
   END IF;
 
-  -- 6. Non-CALLED barber assignment rejection
-  IF p_target_status <> 'CALLED'::public.queue_status_enum AND p_barber_id IS NOT NULL THEN
-    RAISE EXCEPTION 'Barber assignment is only allowed when transitioning to CALLED'
-      USING ERRCODE = 'P0004';
-  END IF;
-
-  -- 7. CALLED validations
+  -- 6. CALLED validations & barber assignment enforcement
   IF p_target_status = 'CALLED'::public.queue_status_enum THEN
     IF p_barber_id IS NULL THEN
       RAISE EXCEPTION 'A barber is required when calling a queue'
@@ -314,6 +308,9 @@ BEGIN
       RAISE EXCEPTION 'Barber % already has an active queue assignment at this outlet', p_barber_id
         USING ERRCODE = 'P0005';
     END IF;
+  ELSIF p_barber_id IS NOT NULL THEN
+    RAISE EXCEPTION 'Barber assignment is only allowed when transitioning to CALLED'
+      USING ERRCODE = 'P0004';
   END IF;
 
   -- 8. Linked appointment consistency check
