@@ -642,23 +642,32 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     expect(helperSql).toMatch(/SET\s+search_path\s*=\s*''/i);
     expect(helperSql).not.toMatch(/SET\s+search_path\s*=\s*public/i);
 
+    // Uses v_status text, not RECORD, and SELECT a.availability_status
+    expect(helperSql).toMatch(/v_status\s+text;/i);
+    expect(helperSql).not.toMatch(/RECORD;/i);
+    expect(helperSql).toMatch(/select\s+a\.availability_status\s+into\s+v_status\s+from\s+public\.get_outlet_barber_availability\(p_outlet_id\)\s+a\s+where\s+a\.employee_id\s*=\s*p_barber_id;/i);
+    expect(helperSql).not.toMatch(/SELECT\s+\*\s+INTO/i);
+
     // BARBER_REQUIRED behavior
-    expect(helperSql).toMatch(/p_outlet_id\s+IS\s+NULL\s+OR\s+p_barber_id\s+IS\s+NULL/i);
-    expect(helperSql).toMatch(/RAISE\s+EXCEPTION\s+'BARBER_REQUIRED'/i);
-    expect(helperSql).toMatch(/ERRCODE\s*=\s*'22023'/i);
+    expect(helperSql).toMatch(/p_outlet_id\s+is\s+null\s+or\s+p_barber_id\s+is\s+null/i);
+    expect(helperSql).toMatch(/raise\s+exception\s+'BARBER_REQUIRED'/i);
+    expect(helperSql).toMatch(/errcode\s*=\s*'22023'/i);
 
     // BARBER_NOT_FOUND_OR_NOT_ASSIGNED behavior
-    expect(helperSql).toMatch(/RAISE\s+EXCEPTION\s+'BARBER_NOT_FOUND_OR_NOT_ASSIGNED'/i);
+    expect(helperSql).toMatch(/raise\s+exception\s+'BARBER_NOT_FOUND_OR_NOT_ASSIGNED'/i);
 
     // P0006 operational rejection
-    expect(helperSql).toMatch(/availability_status\s*<>\s*'SHIFT_ACTIVE'/i);
+    expect(helperSql).toMatch(/v_status\s*<>\s*'SHIFT_ACTIVE'/i);
     expect(helperSql).toMatch(/BARBER_NOT_OPERATIONALLY_AVAILABLE:\s*%/i);
-    expect(helperSql).toMatch(/ERRCODE\s*=\s*'P0006'/i);
+    expect(helperSql).toMatch(/errcode\s*=\s*'P0006'/i);
 
     // Returns status text
-    expect(helperSql).toMatch(/RETURN\s+v_availability\.availability_status;/i);
+    expect(helperSql).toMatch(/return\s+v_status;/i);
 
-    // No execute grants to private helper
+    // Owner-only: revokes EXECUTE from application roles and grants to none
+    expect(migrationContent).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+private\.assert_barber_operationally_available\(uuid,\s*uuid\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated,\s*service_role;/i
+    );
     expect(migrationContent).not.toMatch(
       /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+private\.assert_barber_operationally_available/i
     );
@@ -708,14 +717,37 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     );
   });
 
-  it('Static Audit: distinguishes production state machine from forbidden extra transitions', () => {
+  it('Static Audit: verifies authentication, outlet authorization, and queue row lookup with exact contracts', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
     expect(internalMatch).not.toBeNull();
     const internalSql = internalMatch![0];
 
-    // 1. Check WAITING branch allowed & forbidden
+    // Authentication: 'Authentication required' + 42501
+    expect(internalSql).toMatch(
+      /IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'Authentication required'\s*USING\s+ERRCODE\s*=\s*'42501';/i
+    );
+
+    // Outlet access: 'Access denied for outlet %' + 42501
+    expect(internalSql).toMatch(
+      /IF\s+NOT\s+public\.current_user_has_outlet_access\(p_outlet_id\)\s+THEN\s*RAISE\s+EXCEPTION\s+'Access denied for outlet %',\s*p_outlet_id\s*USING\s+ERRCODE\s*=\s*'42501';/i
+    );
+
+    // Queue not found: 'Queue % was not found in outlet %' + P0002
+    expect(internalSql).toMatch(
+      /IF\s+NOT\s+FOUND\s+THEN\s*RAISE\s+EXCEPTION\s+'Queue %\s+was not found in outlet %',\s*p_queue_id,\s*p_outlet_id\s*USING\s+ERRCODE\s*=\s*'P0002';/i
+    );
+  });
+
+  it('Static Audit: distinguishes production state machine, exact error messages, terminal & unsupported states', () => {
+    const internalMatch = migrationContent.match(
+      /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
+    );
+    expect(internalMatch).not.toBeNull();
+    const internalSql = internalMatch![0];
+
+    // 1. Check WAITING branch allowed & exact P0004 message
     const waitingMatch = internalSql.match(
       /v_queue\.status\s*=\s*'WAITING'::public\.queue_status_enum\s+THEN([\s\S]*?)ELSIF/
     );
@@ -723,10 +755,9 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     const waitingBranch = waitingMatch![1];
     expect(waitingBranch).toMatch(/'CALLED'::public\.queue_status_enum/);
     expect(waitingBranch).toMatch(/'CANCELLED'::public\.queue_status_enum/);
-    expect(waitingBranch).not.toMatch(/'NO_SHOW'/);
-    expect(waitingBranch).not.toMatch(/'IN_SERVICE'/);
+    expect(waitingBranch).toMatch(/RAISE\s+EXCEPTION\s+'Invalid queue transition from WAITING to %',\s*p_target_status\s*USING\s+ERRCODE\s*=\s*'P0004';/i);
 
-    // 2. Check CALLED branch allowed & forbidden
+    // 2. Check CALLED branch allowed & exact P0004 message
     const calledMatch = internalSql.match(
       /v_queue\.status\s*=\s*'CALLED'::public\.queue_status_enum\s+THEN([\s\S]*?)ELSIF/
     );
@@ -735,18 +766,26 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     expect(calledBranch).toMatch(/'IN_SERVICE'::public\.queue_status_enum/);
     expect(calledBranch).toMatch(/'NO_SHOW'::public\.queue_status_enum/);
     expect(calledBranch).toMatch(/'CANCELLED'::public\.queue_status_enum/);
-    expect(calledBranch).not.toMatch(/'WAITING'/);
-    expect(calledBranch).not.toMatch(/'COMPLETED'/);
+    expect(calledBranch).toMatch(/RAISE\s+EXCEPTION\s+'Invalid queue transition from CALLED to %',\s*p_target_status\s*USING\s+ERRCODE\s*=\s*'P0004';/i);
 
-    // 3. Check IN_SERVICE branch allowed & forbidden
+    // 3. Check IN_SERVICE branch allowed & exact P0004 message
     const inServiceMatch = internalSql.match(
-      /v_queue\.status\s*=\s*'IN_SERVICE'::public\.queue_status_enum\s+THEN([\s\S]*?)ELSE/
+      /v_queue\.status\s*=\s*'IN_SERVICE'::public\.queue_status_enum\s+THEN([\s\S]*?)ELSIF/
     );
     expect(inServiceMatch).not.toBeNull();
     const inServiceBranch = inServiceMatch![1];
     expect(inServiceBranch).toMatch(/'COMPLETED'::public\.queue_status_enum/);
-    expect(inServiceBranch).not.toMatch(/'CANCELLED'/);
-    expect(inServiceBranch).not.toMatch(/'WAITING'/);
+    expect(inServiceBranch).toMatch(/RAISE\s+EXCEPTION\s+'Invalid queue transition from IN_SERVICE to %',\s*p_target_status\s*USING\s+ERRCODE\s*=\s*'P0004';/i);
+
+    // 4. Check terminal branch & exact P0004 message
+    expect(internalSql).toMatch(
+      /ELSIF\s+v_queue\.status\s+IN\s*\('COMPLETED'::public\.queue_status_enum,\s*'CANCELLED'::public\.queue_status_enum,\s*'NO_SHOW'::public\.queue_status_enum\)\s+THEN\s*RAISE\s+EXCEPTION\s+'Queue is already terminal and cannot be changed'\s*USING\s+ERRCODE\s*=\s*'P0004';/i
+    );
+
+    // 5. Check unsupported current status branch & exact P0004 message
+    expect(internalSql).toMatch(
+      /ELSE\s*RAISE\s+EXCEPTION\s+'Unsupported current queue status %',\s*v_queue\.status\s*USING\s+ERRCODE\s*=\s*'P0004';/i
+    );
   });
 
   it('Static Audit: verifies expected status contract with P0003', () => {
@@ -757,9 +796,8 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     const internalSql = internalMatch![0];
 
     expect(internalSql).toMatch(
-      /IF\s+p_expected_current_status\s+IS\s+NOT\s+NULL\s+AND\s+v_queue\.status\s*<>\s*p_expected_current_status\s+THEN\s*RAISE\s+EXCEPTION\s+'Queue status changed by another operator \(current: %\)'/i
+      /IF\s+p_expected_current_status\s+IS\s+NOT\s+NULL\s+AND\s+v_queue\.status\s*<>\s*p_expected_current_status\s+THEN\s*RAISE\s+EXCEPTION\s+'Queue status changed by another operator \(current: %\)',\s*v_queue\.status\s*USING\s+ERRCODE\s*=\s*'P0003';/i
     );
-    expect(internalSql).toMatch(/ERRCODE\s*=\s*'P0003'/i);
   });
 
   it('Static Audit: verifies non-CALLED barber rejection with P0004', () => {
@@ -774,7 +812,7 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     );
   });
 
-  it('Static Audit: verifies CALLED validations (22004 barber required, 42501 active barber assignment, Phase 4B availability)', () => {
+  it('Static Audit: verifies CALLED validations (22004 barber required, 42501 active barber assignment with trim(), Phase 4B availability)', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
@@ -784,8 +822,14 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     // Barber required when calling queue (22004)
     expect(internalSql).toMatch(/IF\s+p_barber_id\s+IS\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'A barber is required when calling a queue'\s*USING\s+ERRCODE\s*=\s*'22004';/i);
 
-    // Active barber check (42501)
-    expect(internalSql).toMatch(/NOT\s+EXISTS\s*\([\s\S]*?FROM\s+public\.employees\s+e[\s\S]*?JOIN\s+public\.employee_outlets\s+eo/i);
+    // Exact active barber query with trim()
+    expect(internalSql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+public\.employee_outlets\s+eo\s+JOIN\s+public\.employees\s+e\s+ON\s+e\.id\s*=\s*eo\.employee_id/i);
+    expect(internalSql).toMatch(/eo\.employee_id\s*=\s*p_barber_id/i);
+    expect(internalSql).toMatch(/eo\.outlet_id\s*=\s*p_outlet_id/i);
+    expect(internalSql).toMatch(/eo\.is_active\s*=\s*TRUE/i);
+    expect(internalSql).toMatch(/e\.is_active\s*=\s*TRUE/i);
+    expect(internalSql).toMatch(/lower\(trim\(e\.position\)\)\s+LIKE\s+'%barber%'/i);
+    expect(internalSql).toMatch(/lower\(trim\(e\.position\)\)\s+LIKE\s+'%kapster%'/i);
     expect(internalSql).toMatch(/RAISE\s+EXCEPTION\s+'Barber %\s+is not an active barber assigned to outlet %',\s*p_barber_id,\s*p_outlet_id\s*USING\s+ERRCODE\s*=\s*'42501';/i);
 
     // Authoritative Phase 4B availability assertion
@@ -800,7 +844,7 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     const internalSql = internalMatch![0];
 
     // Exact advisory lock key prefix: 'queue-barber:'
-    expect(internalSql).toMatch(/'queue-barber:'\s*\|\|\s*p_outlet_id::text\s*\|\|\s*':'\s*\|\|\s*p_barber_id::text/i);
+    expect(internalSql).toMatch(/hashtextextended\(\s*'queue-barber:'\s*\|\|\s*p_outlet_id::text\s*\|\|\s*':'\s*\|\|\s*p_barber_id::text,\s*0\s*\)/i);
     expect(internalSql).not.toMatch(/'queue-barber-assignment:'/i);
 
     // Duplicate active barber assignment protection (P0005)
@@ -810,7 +854,7 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     );
   });
 
-  it('Static Audit: verifies linked appointment consistency and sync contracts', () => {
+  it('Static Audit: verifies linked appointment consistency, update branches, and sync contracts', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
@@ -818,21 +862,20 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     const internalSql = internalMatch![0];
 
     // Linked appointment consistency check: exact predicate & 23514
-    expect(internalSql).toMatch(/a\.id\s*=\s*v_queue\.appointment_id/i);
-    expect(internalSql).toMatch(/a\.outlet_id\s*=\s*p_outlet_id/i);
-    expect(internalSql).toMatch(/a\.barber_id\s*=\s*coalesce\(p_barber_id,\s*v_queue\.barber_id\)/i);
-    expect(internalSql).toMatch(/RAISE\s+EXCEPTION\s+'Linked appointment is inconsistent with queue outlet or barber'\s*USING\s+ERRCODE\s*=\s*'23514';/i);
+    expect(internalSql).toMatch(/PERFORM\s+1\s+FROM\s+public\.appointments\s+a\s+WHERE\s+a\.id\s*=\s*v_queue\.appointment_id\s+AND\s+a\.outlet_id\s*=\s*p_outlet_id\s+AND\s+a\.barber_id\s*=\s*coalesce\(p_barber_id,\s*v_queue\.barber_id\);/i);
+    expect(internalSql).toMatch(/IF\s+NOT\s+FOUND\s+THEN\s*RAISE\s+EXCEPTION\s+'Linked appointment is inconsistent with queue outlet or barber'\s*USING\s+ERRCODE\s*=\s*'23514';/i);
 
-    // Branch-specific queue updates
-    expect(internalSql).toMatch(/p_target_status\s*=\s*'CALLED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*barber_id\s*=\s*p_barber_id,\s*called_at\s*=\s*coalesce\(called_at,\s*v_now\)/i);
-    expect(internalSql).toMatch(/p_target_status\s*=\s*'IN_SERVICE'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*started_at\s*=\s*coalesce\(started_at,\s*v_now\)/i);
-    expect(internalSql).toMatch(/p_target_status\s*=\s*'COMPLETED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*completed_at\s*=\s*coalesce\(completed_at,\s*v_now\)/i);
+    // Exact branch-specific queue updates
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'CALLED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*barber_id\s*=\s*p_barber_id,\s*called_at\s*=\s*coalesce\(called_at,\s*v_now\)\s+WHERE\s+id\s*=\s*p_queue_id;/i);
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'IN_SERVICE'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*started_at\s*=\s*coalesce\(started_at,\s*v_now\)\s+WHERE\s+id\s*=\s*p_queue_id;/i);
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'COMPLETED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*completed_at\s*=\s*coalesce\(completed_at,\s*v_now\)\s+WHERE\s+id\s*=\s*p_queue_id;/i);
+    expect(internalSql).toMatch(/ELSE\s+UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status\s+WHERE\s+id\s*=\s*p_queue_id;/i);
 
-    // Linked appointment update must not mutate barber_id
+    // Linked appointment update must not mutate barber_id and must be outlet-scoped
     const appointmentUpdateSection = internalSql.match(/UPDATE\s+public\.appointments[\s\S]*?WHERE[\s\S]*?;/i);
     expect(appointmentUpdateSection).not.toBeNull();
     expect(appointmentUpdateSection![0]).not.toMatch(/barber_id\s*=/i);
-    expect(appointmentUpdateSection![0]).toMatch(/outlet_id\s*=\s*p_outlet_id/i);
+    expect(appointmentUpdateSection![0]).toMatch(/WHERE\s+id\s*=\s*v_queue\.appointment_id\s+AND\s+outlet_id\s*=\s*p_outlet_id;/i);
 
     // Failed linked appointment update protection (23514)
     expect(internalSql).toMatch(/IF\s+NOT\s+FOUND\s+THEN\s*RAISE\s+EXCEPTION\s+'Linked appointment update failed'\s*USING\s+ERRCODE\s*=\s*'23514';/i);

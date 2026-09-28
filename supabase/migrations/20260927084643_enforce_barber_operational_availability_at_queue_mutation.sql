@@ -18,32 +18,34 @@ LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-DECLARE
-  v_availability RECORD;
-BEGIN
-  IF p_outlet_id IS NULL OR p_barber_id IS NULL THEN
-    RAISE EXCEPTION 'BARBER_REQUIRED'
-      USING ERRCODE = '22023';
-  END IF;
+declare
+  v_status text;
+begin
+  if p_outlet_id is null or p_barber_id is null then
+    raise exception 'BARBER_REQUIRED'
+      using errcode = '22023';
+  end if;
 
-  SELECT *
-  INTO v_availability
-  FROM public.get_outlet_barber_availability(p_outlet_id)
-  WHERE employee_id = p_barber_id;
+  select a.availability_status
+    into v_status
+  from public.get_outlet_barber_availability(p_outlet_id) a
+  where a.employee_id = p_barber_id;
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'BARBER_NOT_FOUND_OR_NOT_ASSIGNED'
-      USING ERRCODE = '22023';
-  END IF;
+  if not found then
+    raise exception 'BARBER_NOT_FOUND_OR_NOT_ASSIGNED'
+      using errcode = '22023';
+  end if;
 
-  IF v_availability.availability_status <> 'SHIFT_ACTIVE' THEN
-    RAISE EXCEPTION 'BARBER_NOT_OPERATIONALLY_AVAILABLE: %', v_availability.availability_status
-      USING ERRCODE = 'P0006';
-  END IF;
+  if v_status <> 'SHIFT_ACTIVE' then
+    raise exception 'BARBER_NOT_OPERATIONALLY_AVAILABLE: %', v_status
+      using errcode = 'P0006';
+  end if;
 
-  RETURN v_availability.availability_status;
-END;
+  return v_status;
+end;
 $$;
+
+REVOKE ALL ON FUNCTION private.assert_barber_operationally_available(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ============================================================================
 -- 2. Authoritative Walk-in Queue Creation Enforcement
@@ -206,13 +208,13 @@ DECLARE
 BEGIN
   -- 1. Authentication check
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Akses ditolak: pengguna tidak terautentikasi'
+    RAISE EXCEPTION 'Authentication required'
       USING ERRCODE = '42501';
   END IF;
 
   -- 2. Outlet authorization check
   IF NOT public.current_user_has_outlet_access(p_outlet_id) THEN
-    RAISE EXCEPTION 'Akses ditolak: pengguna tidak memiliki izin di outlet ini'
+    RAISE EXCEPTION 'Access denied for outlet %', p_outlet_id
       USING ERRCODE = '42501';
   END IF;
 
@@ -224,7 +226,7 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Queue % not found for outlet %', p_queue_id, p_outlet_id
+    RAISE EXCEPTION 'Queue % was not found in outlet %', p_queue_id, p_outlet_id
       USING ERRCODE = 'P0002';
   END IF;
 
@@ -237,21 +239,24 @@ BEGIN
   -- 5. Exact existing queue state machine
   IF v_queue.status = 'WAITING'::public.queue_status_enum THEN
     IF p_target_status NOT IN ('CALLED'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum) THEN
-      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+      RAISE EXCEPTION 'Invalid queue transition from WAITING to %', p_target_status
         USING ERRCODE = 'P0004';
     END IF;
   ELSIF v_queue.status = 'CALLED'::public.queue_status_enum THEN
     IF p_target_status NOT IN ('IN_SERVICE'::public.queue_status_enum, 'NO_SHOW'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum) THEN
-      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+      RAISE EXCEPTION 'Invalid queue transition from CALLED to %', p_target_status
         USING ERRCODE = 'P0004';
     END IF;
   ELSIF v_queue.status = 'IN_SERVICE'::public.queue_status_enum THEN
     IF p_target_status <> 'COMPLETED'::public.queue_status_enum THEN
-      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+      RAISE EXCEPTION 'Invalid queue transition from IN_SERVICE to %', p_target_status
         USING ERRCODE = 'P0004';
     END IF;
+  ELSIF v_queue.status IN ('COMPLETED'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum, 'NO_SHOW'::public.queue_status_enum) THEN
+    RAISE EXCEPTION 'Queue is already terminal and cannot be changed'
+      USING ERRCODE = 'P0004';
   ELSE
-    RAISE EXCEPTION 'Cannot transition terminal queue status %', v_queue.status
+    RAISE EXCEPTION 'Unsupported current queue status %', v_queue.status
       USING ERRCODE = 'P0004';
   END IF;
 
@@ -271,16 +276,15 @@ BEGIN
     -- Validate active barber assignment
     IF NOT EXISTS (
       SELECT 1
-      FROM public.employees e
-      JOIN public.employee_outlets eo
-        ON eo.employee_id = e.id
-       AND eo.outlet_id = p_outlet_id
-       AND eo.is_active = TRUE
-      WHERE e.id = p_barber_id
+      FROM public.employee_outlets eo
+      JOIN public.employees e ON e.id = eo.employee_id
+      WHERE eo.employee_id = p_barber_id
+        AND eo.outlet_id = p_outlet_id
+        AND eo.is_active = TRUE
         AND e.is_active = TRUE
         AND (
-          pg_catalog.lower(e.position) LIKE '%barber%'
-          OR pg_catalog.lower(e.position) LIKE '%kapster%'
+          lower(trim(e.position)) LIKE '%barber%'
+          OR lower(trim(e.position)) LIKE '%kapster%'
         )
     ) THEN
       RAISE EXCEPTION 'Barber % is not an active barber assigned to outlet %', p_barber_id, p_outlet_id
@@ -291,8 +295,11 @@ BEGIN
     PERFORM private.assert_barber_operationally_available(p_outlet_id, p_barber_id);
 
     -- Advisory lock
-    PERFORM pg_catalog.pg_advisory_xact_lock(
-      pg_catalog.hashtextextended('queue-barber:' || p_outlet_id::text || ':' || p_barber_id::text, 0)
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended(
+        'queue-barber:' || p_outlet_id::text || ':' || p_barber_id::text,
+        0
+      )
     );
 
     -- Duplicate active barber assignment protection
