@@ -749,6 +749,19 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     expect(inServiceBranch).not.toMatch(/'WAITING'/);
   });
 
+  it('Static Audit: verifies expected status contract with P0003', () => {
+    const internalMatch = migrationContent.match(
+      /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
+    );
+    expect(internalMatch).not.toBeNull();
+    const internalSql = internalMatch![0];
+
+    expect(internalSql).toMatch(
+      /IF\s+p_expected_current_status\s+IS\s+NOT\s+NULL\s+AND\s+v_queue\.status\s*<>\s*p_expected_current_status\s+THEN\s*RAISE\s+EXCEPTION\s+'Queue status changed by another operator \(current: %\)'/i
+    );
+    expect(internalSql).toMatch(/ERRCODE\s*=\s*'P0003'/i);
+  });
+
   it('Static Audit: verifies non-CALLED barber rejection with P0004', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
@@ -757,34 +770,81 @@ describe('Phase 4B: Migration Fidelity and Static Audit', () => {
     const internalSql = internalMatch![0];
 
     expect(internalSql).toMatch(
-      /IF\s+p_target_status\s*<>\s*'CALLED'::public\.queue_status_enum\s+THEN\s*IF\s+p_barber_id\s+IS\s+NOT\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'Barber assignment is only allowed when transitioning to CALLED'\s*USING\s+ERRCODE\s*=\s*'P0004';/i
+      /IF\s+p_target_status\s*<>\s*'CALLED'::public\.queue_status_enum\s+AND\s+p_barber_id\s+IS\s+NOT\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'Barber assignment is only allowed when transitioning to CALLED'\s*USING\s+ERRCODE\s*=\s*'P0004';/i
     );
   });
 
-  it('Static Audit: verifies advisory lock, duplicate assignment protection, and appointment consistency', () => {
+  it('Static Audit: verifies CALLED validations (22004 barber required, 42501 active barber assignment, Phase 4B availability)', () => {
     const internalMatch = migrationContent.match(
       /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
     expect(internalMatch).not.toBeNull();
     const internalSql = internalMatch![0];
 
-    // Advisory lock
-    expect(internalSql).toMatch(/pg_catalog\.pg_advisory_xact_lock/i);
-    // Duplicate active barber assignment protection
-    expect(internalSql).toMatch(/DUPLICATE_ACTIVE_BARBER_ASSIGNMENT/i);
+    // Barber required when calling queue (22004)
+    expect(internalSql).toMatch(/IF\s+p_barber_id\s+IS\s+NULL\s+THEN\s*RAISE\s+EXCEPTION\s+'A barber is required when calling a queue'\s*USING\s+ERRCODE\s*=\s*'22004';/i);
+
+    // Active barber check (42501)
+    expect(internalSql).toMatch(/NOT\s+EXISTS\s*\([\s\S]*?FROM\s+public\.employees\s+e[\s\S]*?JOIN\s+public\.employee_outlets\s+eo/i);
+    expect(internalSql).toMatch(/RAISE\s+EXCEPTION\s+'Barber %\s+is not an active barber assigned to outlet %',\s*p_barber_id,\s*p_outlet_id\s*USING\s+ERRCODE\s*=\s*'42501';/i);
+
+    // Authoritative Phase 4B availability assertion
+    expect(internalSql).toMatch(/PERFORM\s+private\.assert_barber_operationally_available\(p_outlet_id,\s*p_barber_id\);/i);
+  });
+
+  it('Static Audit: verifies advisory lock key prefix and P0005 duplicate assignment protection', () => {
+    const internalMatch = migrationContent.match(
+      /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
+    );
+    expect(internalMatch).not.toBeNull();
+    const internalSql = internalMatch![0];
+
+    // Exact advisory lock key prefix: 'queue-barber:'
+    expect(internalSql).toMatch(/'queue-barber:'\s*\|\|\s*p_outlet_id::text\s*\|\|\s*':'\s*\|\|\s*p_barber_id::text/i);
+    expect(internalSql).not.toMatch(/'queue-barber-assignment:'/i);
+
+    // Duplicate active barber assignment protection (P0005)
+    expect(internalSql).toMatch(/RAISE\s+EXCEPTION\s+'Barber %\s+already has an active queue assignment at this outlet',\s*p_barber_id\s*USING\s+ERRCODE\s*=\s*'P0005';/i);
     expect(internalSql).toMatch(
       /status\s+IN\s*\('CALLED'::public\.queue_status_enum,\s*'IN_SERVICE'::public\.queue_status_enum\)/i
     );
-    // Linked appointment consistency
-    expect(internalSql).toMatch(/v_appointment\.outlet_id\s*<>\s*p_outlet_id/i);
-    expect(internalSql).toMatch(/LINKED_APPOINTMENT_OUTLET_MISMATCH/i);
-    expect(internalSql).toMatch(
-      /v_appointment\.barber_id\s+IS\s+NOT\s+NULL\s+AND\s+v_appointment\.barber_id\s*<>\s*v_effective_barber_id/i
+  });
+
+  it('Static Audit: verifies linked appointment consistency and sync contracts', () => {
+    const internalMatch = migrationContent.match(
+      /CREATE OR REPLACE FUNCTION private\.transition_queue_status_internal[\s\S]*?\$\$[\s\S]*?\$\$;/
     );
-    expect(internalSql).toMatch(/LINKED_APPOINTMENT_BARBER_MISMATCH/i);
-    // Failed linked appointment update protection
-    expect(internalSql).toMatch(/GET\s+DIAGNOSTICS\s+v_rows_updated\s*=\s*ROW_COUNT;/i);
-    expect(internalSql).toMatch(/LINKED_APPOINTMENT_UPDATE_FAILED/i);
+    expect(internalMatch).not.toBeNull();
+    const internalSql = internalMatch![0];
+
+    // Linked appointment consistency check: exact predicate & 23514
+    expect(internalSql).toMatch(/a\.id\s*=\s*v_queue\.appointment_id/i);
+    expect(internalSql).toMatch(/a\.outlet_id\s*=\s*p_outlet_id/i);
+    expect(internalSql).toMatch(/a\.barber_id\s*=\s*coalesce\(p_barber_id,\s*v_queue\.barber_id\)/i);
+    expect(internalSql).toMatch(/RAISE\s+EXCEPTION\s+'Linked appointment is inconsistent with queue outlet or barber'\s*USING\s+ERRCODE\s*=\s*'23514';/i);
+
+    // Branch-specific queue updates
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'CALLED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*barber_id\s*=\s*p_barber_id,\s*called_at\s*=\s*coalesce\(called_at,\s*v_now\)/i);
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'IN_SERVICE'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*started_at\s*=\s*coalesce\(started_at,\s*v_now\)/i);
+    expect(internalSql).toMatch(/p_target_status\s*=\s*'COMPLETED'::public\.queue_status_enum\s+THEN\s*UPDATE\s+public\.queues\s+SET\s+status\s*=\s*p_target_status,\s*completed_at\s*=\s*coalesce\(completed_at,\s*v_now\)/i);
+
+    // Linked appointment update must not mutate barber_id
+    const appointmentUpdateSection = internalSql.match(/UPDATE\s+public\.appointments[\s\S]*?WHERE[\s\S]*?;/i);
+    expect(appointmentUpdateSection).not.toBeNull();
+    expect(appointmentUpdateSection![0]).not.toMatch(/barber_id\s*=/i);
+    expect(appointmentUpdateSection![0]).toMatch(/outlet_id\s*=\s*p_outlet_id/i);
+
+    // Failed linked appointment update protection (23514)
+    expect(internalSql).toMatch(/IF\s+NOT\s+FOUND\s+THEN\s*RAISE\s+EXCEPTION\s+'Linked appointment update failed'\s*USING\s+ERRCODE\s*=\s*'23514';/i);
+  });
+
+  it('Static Audit: verifies complete absence of obsolete custom error strings in migration', () => {
+    expect(migrationContent).not.toMatch(/LINKED_APPOINTMENT_OUTLET_MISMATCH/i);
+    expect(migrationContent).not.toMatch(/LINKED_APPOINTMENT_BARBER_MISMATCH/i);
+    expect(migrationContent).not.toMatch(/LINKED_APPOINTMENT_UPDATE_FAILED/i);
+    expect(migrationContent).not.toMatch(/DUPLICATE_ACTIVE_BARBER_ASSIGNMENT/i);
+    expect(migrationContent).not.toMatch(/QUEUE_NOT_FOUND/i);
+    expect(migrationContent).not.toMatch(/INVALID_TARGET_STATUS/i);
   });
 });
 

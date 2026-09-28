@@ -45,8 +45,6 @@ BEGIN
 END;
 $$;
 
--- Must NOT grant EXECUTE to service_role/authenticated/anon/public
-
 -- ============================================================================
 -- 2. Authoritative Walk-in Queue Creation Enforcement
 -- ============================================================================
@@ -202,19 +200,12 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_actor pg_catalog.uuid;
   v_queue public.queues%rowtype;
   v_now timestamptz := statement_timestamp();
   v_appointment_status public.appointment_status_enum;
-  v_appointment public.appointments%rowtype;
-  v_barber RECORD;
-  v_effective_barber_id pg_catalog.uuid;
-  v_advisory_key pg_catalog.int8;
-  v_rows_updated integer;
 BEGIN
   -- 1. Authentication check
-  v_actor := auth.uid();
-  IF v_actor IS NULL THEN
+  IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Akses ditolak: pengguna tidak terautentikasi'
       USING ERRCODE = '42501';
   END IF;
@@ -233,87 +224,76 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'QUEUE_NOT_FOUND'
+    RAISE EXCEPTION 'Queue % not found for outlet %', p_queue_id, p_outlet_id
       USING ERRCODE = 'P0002';
   END IF;
 
-  -- 4. Optional expected-current-status validation
-  IF p_expected_current_status IS NOT NULL AND v_queue.status IS DISTINCT FROM p_expected_current_status THEN
-    RAISE EXCEPTION 'Status antrean saat ini (%) tidak sesuai dengan yang diharapkan (%)',
-      v_queue.status, p_expected_current_status
-      USING ERRCODE = '22023';
+  -- 4. Expected status validation
+  IF p_expected_current_status IS NOT NULL AND v_queue.status <> p_expected_current_status THEN
+    RAISE EXCEPTION 'Queue status changed by another operator (current: %)', v_queue.status
+      USING ERRCODE = 'P0003';
   END IF;
 
   -- 5. Exact existing queue state machine
   IF v_queue.status = 'WAITING'::public.queue_status_enum THEN
     IF p_target_status NOT IN ('CALLED'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum) THEN
-      RAISE EXCEPTION 'INVALID_QUEUE_TRANSITION: % to %', v_queue.status, p_target_status
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+        USING ERRCODE = 'P0004';
     END IF;
   ELSIF v_queue.status = 'CALLED'::public.queue_status_enum THEN
     IF p_target_status NOT IN ('IN_SERVICE'::public.queue_status_enum, 'NO_SHOW'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum) THEN
-      RAISE EXCEPTION 'INVALID_QUEUE_TRANSITION: % to %', v_queue.status, p_target_status
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+        USING ERRCODE = 'P0004';
     END IF;
   ELSIF v_queue.status = 'IN_SERVICE'::public.queue_status_enum THEN
     IF p_target_status <> 'COMPLETED'::public.queue_status_enum THEN
-      RAISE EXCEPTION 'INVALID_QUEUE_TRANSITION: % to %', v_queue.status, p_target_status
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Invalid transition from % to %', v_queue.status, p_target_status
+        USING ERRCODE = 'P0004';
     END IF;
   ELSE
-    RAISE EXCEPTION 'TERMINAL_QUEUE_STATUS: %', v_queue.status
-      USING ERRCODE = '22023';
+    RAISE EXCEPTION 'Cannot transition terminal queue status %', v_queue.status
+      USING ERRCODE = 'P0004';
   END IF;
 
   -- 6. Non-CALLED barber assignment rejection
-  IF p_target_status <> 'CALLED'::public.queue_status_enum THEN
-    IF p_barber_id IS NOT NULL THEN
-      RAISE EXCEPTION 'Barber assignment is only allowed when transitioning to CALLED'
-        USING ERRCODE = 'P0004';
-    END IF;
-    v_effective_barber_id := v_queue.barber_id;
-  ELSE
-    -- 7. CALLED validations
+  IF p_target_status <> 'CALLED'::public.queue_status_enum AND p_barber_id IS NOT NULL THEN
+    RAISE EXCEPTION 'Barber assignment is only allowed when transitioning to CALLED'
+      USING ERRCODE = 'P0004';
+  END IF;
+
+  -- 7. CALLED validations
+  IF p_target_status = 'CALLED'::public.queue_status_enum THEN
     IF p_barber_id IS NULL THEN
-      RAISE EXCEPTION 'BARBER_REQUIRED'
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'A barber is required when calling a queue'
+        USING ERRCODE = '22004';
     END IF;
 
     -- Validate active barber assignment
-    SELECT e.id, e.full_name, e.position, e.is_active
-    INTO v_barber
-    FROM public.employees e
-    JOIN public.employee_outlets eo
-      ON eo.employee_id = e.id
-     AND eo.outlet_id = p_outlet_id
-     AND eo.is_active = TRUE
-    WHERE e.id = p_barber_id;
-
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'BARBER_NOT_FOUND_OR_NOT_ASSIGNED'
-        USING ERRCODE = '22023';
-    END IF;
-
-    IF NOT v_barber.is_active THEN
-      RAISE EXCEPTION 'BARBER_INACTIVE'
-        USING ERRCODE = '22023';
-    END IF;
-
-    -- Semantic barber/kapster validation
-    IF NOT (
-      pg_catalog.lower(v_barber.position) LIKE '%barber%'
-      OR pg_catalog.lower(v_barber.position) LIKE '%kapster%'
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.employees e
+      JOIN public.employee_outlets eo
+        ON eo.employee_id = e.id
+       AND eo.outlet_id = p_outlet_id
+       AND eo.is_active = TRUE
+      WHERE e.id = p_barber_id
+        AND e.is_active = TRUE
+        AND (
+          pg_catalog.lower(e.position) LIKE '%barber%'
+          OR pg_catalog.lower(e.position) LIKE '%kapster%'
+        )
     ) THEN
-      RAISE EXCEPTION 'INVALID_BARBER_ROLE'
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Barber % is not an active barber assigned to outlet %', p_barber_id, p_outlet_id
+        USING ERRCODE = '42501';
     END IF;
 
-    -- Operational availability assertion (Phase 4B)
+    -- Phase 4B Operational Availability Enforcement
     PERFORM private.assert_barber_operationally_available(p_outlet_id, p_barber_id);
 
     -- Advisory lock
-    v_advisory_key := pg_catalog.hashtextextended('queue-barber-assignment:' || p_outlet_id::text || ':' || p_barber_id::text, 0);
-    PERFORM pg_catalog.pg_advisory_xact_lock(v_advisory_key);
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended('queue-barber:' || p_outlet_id::text || ':' || p_barber_id::text, 0)
+    );
 
     -- Duplicate active barber assignment protection
     IF EXISTS (
@@ -324,53 +304,59 @@ BEGIN
         AND status IN ('CALLED'::public.queue_status_enum, 'IN_SERVICE'::public.queue_status_enum)
         AND id <> p_queue_id
     ) THEN
-      RAISE EXCEPTION 'DUPLICATE_ACTIVE_BARBER_ASSIGNMENT'
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Barber % already has an active queue assignment at this outlet', p_barber_id
+        USING ERRCODE = 'P0005';
     END IF;
-
-    v_effective_barber_id := p_barber_id;
   END IF;
 
   -- 8. Linked appointment consistency check
   IF v_queue.appointment_id IS NOT NULL THEN
-    SELECT *
-    INTO v_appointment
-    FROM public.appointments
-    WHERE id = v_queue.appointment_id;
+    PERFORM 1
+    FROM public.appointments a
+    WHERE a.id = v_queue.appointment_id
+      AND a.outlet_id = p_outlet_id
+      AND a.barber_id = coalesce(p_barber_id, v_queue.barber_id);
 
     IF NOT FOUND THEN
-      RAISE EXCEPTION 'LINKED_APPOINTMENT_NOT_FOUND'
-        USING ERRCODE = 'P0002';
-    END IF;
-
-    IF v_appointment.outlet_id <> p_outlet_id THEN
-      RAISE EXCEPTION 'LINKED_APPOINTMENT_OUTLET_MISMATCH'
-        USING ERRCODE = '22023';
-    END IF;
-
-    IF v_appointment.barber_id IS NOT NULL AND v_appointment.barber_id <> v_effective_barber_id THEN
-      RAISE EXCEPTION 'LINKED_APPOINTMENT_BARBER_MISMATCH'
-        USING ERRCODE = '22023';
+      RAISE EXCEPTION 'Linked appointment is inconsistent with queue outlet or barber'
+        USING ERRCODE = '23514';
     END IF;
   END IF;
 
-  -- 9. Update queue row with timestamps
-  UPDATE public.queues
-  SET
-    status = p_target_status,
-    barber_id = v_effective_barber_id,
-    called_at = CASE WHEN p_target_status = 'CALLED'::public.queue_status_enum AND called_at IS NULL THEN v_now ELSE called_at END,
-    started_at = CASE WHEN p_target_status = 'IN_SERVICE'::public.queue_status_enum AND started_at IS NULL THEN v_now ELSE started_at END,
-    completed_at = CASE WHEN p_target_status IN ('COMPLETED'::public.queue_status_enum, 'CANCELLED'::public.queue_status_enum, 'NO_SHOW'::public.queue_status_enum) AND completed_at IS NULL THEN v_now ELSE completed_at END
-  WHERE id = p_queue_id;
+  -- 9. Update queue row with branch-specific update semantics
+  IF p_target_status = 'CALLED'::public.queue_status_enum THEN
+    UPDATE public.queues
+    SET
+      status = p_target_status,
+      barber_id = p_barber_id,
+      called_at = coalesce(called_at, v_now)
+    WHERE id = p_queue_id;
+  ELSIF p_target_status = 'IN_SERVICE'::public.queue_status_enum THEN
+    UPDATE public.queues
+    SET
+      status = p_target_status,
+      started_at = coalesce(started_at, v_now)
+    WHERE id = p_queue_id;
+  ELSIF p_target_status = 'COMPLETED'::public.queue_status_enum THEN
+    UPDATE public.queues
+    SET
+      status = p_target_status,
+      completed_at = coalesce(completed_at, v_now)
+    WHERE id = p_queue_id;
+  ELSE
+    UPDATE public.queues
+    SET
+      status = p_target_status
+    WHERE id = p_queue_id;
+  END IF;
 
-  -- 10. Linked appointment status synchronization & failed update protection
+  -- 10. Linked appointment status synchronization
   IF v_queue.appointment_id IS NOT NULL THEN
-    v_appointment_status := CASE
-      WHEN p_target_status = 'IN_SERVICE'::public.queue_status_enum THEN 'IN_SERVICE'::public.appointment_status_enum
-      WHEN p_target_status = 'COMPLETED'::public.queue_status_enum THEN 'COMPLETED'::public.appointment_status_enum
-      WHEN p_target_status = 'CANCELLED'::public.queue_status_enum THEN 'CANCELLED'::public.appointment_status_enum
-      WHEN p_target_status = 'NO_SHOW'::public.queue_status_enum THEN 'NO_SHOW'::public.appointment_status_enum
+    v_appointment_status := CASE p_target_status
+      WHEN 'IN_SERVICE'::public.queue_status_enum THEN 'IN_SERVICE'::public.appointment_status_enum
+      WHEN 'COMPLETED'::public.queue_status_enum THEN 'COMPLETED'::public.appointment_status_enum
+      WHEN 'CANCELLED'::public.queue_status_enum THEN 'CANCELLED'::public.appointment_status_enum
+      WHEN 'NO_SHOW'::public.queue_status_enum THEN 'NO_SHOW'::public.appointment_status_enum
       ELSE NULL
     END;
 
@@ -378,26 +364,13 @@ BEGIN
       UPDATE public.appointments
       SET
         status = v_appointment_status,
-        barber_id = COALESCE(v_effective_barber_id, barber_id),
         updated_at = v_now
-      WHERE id = v_queue.appointment_id;
+      WHERE id = v_queue.appointment_id
+        AND outlet_id = p_outlet_id;
 
-      GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
-      IF v_rows_updated = 0 THEN
-        RAISE EXCEPTION 'LINKED_APPOINTMENT_UPDATE_FAILED'
-          USING ERRCODE = 'P0002';
-      END IF;
-    ELSIF v_effective_barber_id IS NOT NULL AND v_appointment.barber_id IS NULL THEN
-      UPDATE public.appointments
-      SET
-        barber_id = v_effective_barber_id,
-        updated_at = v_now
-      WHERE id = v_queue.appointment_id;
-
-      GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
-      IF v_rows_updated = 0 THEN
-        RAISE EXCEPTION 'LINKED_APPOINTMENT_UPDATE_FAILED'
-          USING ERRCODE = 'P0002';
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Linked appointment update failed'
+          USING ERRCODE = '23514';
       END IF;
     END IF;
   END IF;
@@ -408,7 +381,7 @@ BEGIN
     'queue_id', p_queue_id,
     'outlet_id', p_outlet_id,
     'status', p_target_status::text,
-    'barber_id', v_effective_barber_id
+    'barber_id', coalesce(p_barber_id, v_queue.barber_id)
   );
 END;
 $$;
