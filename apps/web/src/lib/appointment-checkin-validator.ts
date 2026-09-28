@@ -21,9 +21,10 @@ export interface CheckInValidationResult {
 /**
  * Validates authoritative RPC response for check_in_appointment_to_queue.
  * Fails closed if any required field is missing, synthetic, or malformed:
- * - queue_id: required, non-empty string
- * - queue_number: required, number, integer, > 0
- * - appointment_id: required when returned, string, if present MUST equal requested appointment.id
+ * - queue_id: required, non-empty string, authoritative only (never fallback to record.id)
+ * - queue_number: required, number, integer, > 0, authoritative only
+ * - appointment_id: required, non-empty string, authoritative only (never synthesized),
+ *   MUST equal expectedAppointmentId when expectedAppointmentId is supplied
  * - appointment_number: if returned, MUST be string
  * - status: required, MUST equal exactly WAITING
  * - joined_at: required, non-empty string, must parse as a valid timestamp
@@ -36,9 +37,10 @@ export interface CheckInValidationResult {
  * - status
  *
  * No fallback:
+ * - record.id as queue_id
  * - queue_number = 0
  * - status = WAITING
- * - appointment_id = requested ID when server returned another ID
+ * - expectedAppointmentId as fallback appointment_id
  * - current timestamp
  * - generated queue ID
  */
@@ -56,8 +58,8 @@ export function validateCheckInResponse(
 
   const record = payload as Record<string, unknown>;
 
-  // queue_id: required, non-empty string
-  const rawQueueId = record.queue_id ?? record.id;
+  // queue_id: required, non-empty string, authoritative only (never fallback to record.id)
+  const rawQueueId = record.queue_id;
   if (typeof rawQueueId !== 'string' || rawQueueId.trim().length === 0) {
     return {
       valid: false,
@@ -112,25 +114,22 @@ export function validateCheckInResponse(
   }
   const status: 'WAITING' = 'WAITING';
 
-  // appointment_id: required when returned, string, if present MUST equal requested appointment.id
+  // appointment_id: required, authoritative only, non-empty string, must match requested appointment
   const rawApptId = record.appointment_id;
-  let resolvedApptId = expectedAppointmentId || '';
-  if (rawApptId !== undefined && rawApptId !== null) {
-    if (typeof rawApptId !== 'string' || rawApptId.trim().length === 0) {
-      return {
-        valid: false,
-        data: null,
-        error: 'ID janji temu pada respons antrean tidak valid.',
-      };
-    }
-    if (expectedAppointmentId && rawApptId.trim() !== expectedAppointmentId.trim()) {
-      return {
-        valid: false,
-        data: null,
-        error: 'ID janji temu pada respons antrean tidak cocok dengan janji temu yang diminta.',
-      };
-    }
-    resolvedApptId = rawApptId.trim();
+  if (typeof rawApptId !== 'string' || rawApptId.trim().length === 0) {
+    return {
+      valid: false,
+      data: null,
+      error: 'Server tidak mengembalikan ID janji temu yang valid pada respons antrean.',
+    };
+  }
+  const appointmentId = rawApptId.trim();
+  if (expectedAppointmentId && appointmentId !== expectedAppointmentId.trim()) {
+    return {
+      valid: false,
+      data: null,
+      error: 'ID janji temu pada respons antrean tidak cocok dengan janji temu yang diminta.',
+    };
   }
 
   // appointment_number: if returned, MUST be string
@@ -144,7 +143,7 @@ export function validateCheckInResponse(
         error: 'Nomor janji temu pada respons antrean tidak valid.',
       };
     }
-    appointmentNumber = rawApptNumber;
+    appointmentNumber = rawApptNumber.trim();
   }
 
   return {
@@ -152,7 +151,7 @@ export function validateCheckInResponse(
     data: {
       queueId,
       queueNumber,
-      appointmentId: resolvedApptId,
+      appointmentId,
       appointmentNumber,
       status,
       joinedAt,
@@ -165,9 +164,12 @@ export function validateCheckInResponse(
  * Maps non-operational backend/database error strings into humane operational guidance.
  * Ensures SQLSTATE, BARBER_NOT_OPERATIONALLY_AVAILABLE, and raw PostgreSQL internals
  * are never exposed to the visible operator UI.
+ * Unknown errors fail closed to a safe generic message.
  */
 export function mapAppointmentCheckInError(rawMessage: string): string {
-  if (!rawMessage) return 'Gagal melakukan check-in janji temu.';
+  if (!rawMessage || typeof rawMessage !== 'string' || rawMessage.trim().length === 0) {
+    return 'Gagal melakukan check-in janji temu karena kendala sistem.';
+  }
 
   if (rawMessage.includes('BARBER_NOT_OPERATIONALLY_AVAILABLE')) {
     return 'Kapster tidak tersedia secara operasional saat ini.';
@@ -212,10 +214,6 @@ export function mapAppointmentCheckInError(rawMessage: string): string {
     return 'Cabang sedang tidak aktif.';
   }
 
-  // Strip SQLSTATE or PostgreSQL internal syntax/relation errors
-  if (/P\d{4}|SQLSTATE|search_path|relation|syntax error/i.test(rawMessage)) {
-    return 'Gagal melakukan check-in janji temu karena kendala sistem.';
-  }
-
-  return rawMessage;
+  // Any unknown, internal PostgreSQL, SQLSTATE, or arbitrary backend error fails closed to a safe generic message
+  return 'Gagal melakukan check-in janji temu karena kendala sistem.';
 }

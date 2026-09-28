@@ -1,7 +1,7 @@
 /**
  * Phase 4E — Web Appointment Check-In Barber Availability Parity Verification Suite
  *
- * Validates the 24 authoritative requirements (A through X) and static source assertions:
+ * Validates the 24 authoritative requirements (A through X), audit regressions, and static source assertions:
  * A. ON_LEAVE maps correctly
  * B. ON_BREAK maps correctly
  * C. OUTSIDE_SHIFT maps correctly
@@ -26,6 +26,16 @@
  * V. successful response preserves authoritative queue id
  * W. raw BARBER_NOT_OPERATIONALLY_AVAILABLE never reaches UI feedback
  * X. service prefill only occurs after successful validation
+ *
+ * Audit Regressions:
+ * - queue_id fallback rejection (record.id never used when queue_id is missing)
+ * - appointment_id missing fails closed (expectedAppointmentId never copied into data)
+ * - unknown backend error sanitized (never leaks PostgreSQL internals, SQLSTATE, P0006, etc.)
+ *
+ * Static Assertions:
+ * - page.tsx assertions (strict validator used, no queue_number ?? 0, no status fallback, etc.)
+ * - validator.ts assertions (no record.queue_id ?? record.id, no record.queue_id || record.id,
+ *   no expectedAppointmentId assignment as fallback, no return rawMessage;)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -437,6 +447,120 @@ describe('Phase 4E — Web Appointment Check-In Barber Availability Parity (Requ
     // Prefill must use validated.queueId, NOT createdQueueId or fallback
     expect(fnBody).toContain('validated.queueId');
     expect(fnBody).toContain('queueServices[validated.queueId]');
+  });
+
+  // Audit Regression Tests (Strict Contract Fix)
+  describe('Audit Regression Tests — Strict Response Contract & Error Sanitization', () => {
+    // Regression A: queue_id fallback rejection
+    it('Regression A: queue_id fallback rejection — record.id must never be used when queue_id is missing', () => {
+      const payloadWithIdFallback = {
+        id: 'fallback-id',
+        queue_number: 15,
+        appointment_id: 'apt-uuid-001',
+        appointment_number: 'APT-001',
+        status: 'WAITING',
+        joined_at: '2026-09-28T10:15:30.000Z',
+      };
+      const res = validateCheckInResponse(payloadWithIdFallback, 'apt-uuid-001');
+      expect(res.valid).toBe(false);
+      expect(res.data).toBeNull();
+      expect(res.error).toMatch(/ID antrean/i);
+    });
+
+    // Regression B: appointment_id missing fails closed and never copies expectedAppointmentId
+    it('Regression B: appointment_id missing — validation fails closed and expectedAppointmentId is NEVER copied', () => {
+      const payloadMissingApptId = {
+        queue_id: 'q-uuid-001',
+        queue_number: 15,
+        appointment_number: 'APT-001',
+        status: 'WAITING',
+        joined_at: '2026-09-28T10:15:30.000Z',
+      };
+      const res = validateCheckInResponse(payloadMissingApptId, 'apt-uuid-001');
+      expect(res.valid).toBe(false);
+      expect(res.data).toBeNull();
+      expect(res.error).toMatch(/ID janji temu/i);
+
+      // Verify with explicit undefined
+      const resExplicitUndefined = validateCheckInResponse(
+        { ...baseValidPayload, appointment_id: undefined },
+        'apt-uuid-001'
+      );
+      expect(resExplicitUndefined.valid).toBe(false);
+      expect(resExplicitUndefined.data).toBeNull();
+
+      // Verify with explicit null
+      const resExplicitNull = validateCheckInResponse(
+        { ...baseValidPayload, appointment_id: null },
+        'apt-uuid-001'
+      );
+      expect(resExplicitNull.valid).toBe(false);
+      expect(resExplicitNull.data).toBeNull();
+
+      // Verify empty string
+      const resEmptyAppt = validateCheckInResponse(
+        { ...baseValidPayload, appointment_id: '' },
+        'apt-uuid-001'
+      );
+      expect(resEmptyAppt.valid).toBe(false);
+      expect(resEmptyAppt.data).toBeNull();
+    });
+
+    // Regression C: unknown backend error is sanitized
+    it('Regression C: unknown backend error is sanitized — never leaks PostgreSQL internals, SQLSTATE, or raw error', () => {
+      const rawUnknownErrors = [
+        'P0006 unexpected database failure',
+        'ERROR: relation public.some_internal_table does not exist',
+        'PLPGSQL internal exception',
+        'arbitrary backend failure message',
+        'syntax error at or near "SELECT"',
+        'SET search_path TO pg_catalog',
+        'SQLSTATE[XX000]: Internal error in function check_in_appointment_to_queue',
+      ];
+
+      for (const raw of rawUnknownErrors) {
+        const mapped = mapAppointmentCheckInError(raw);
+        expect(mapped).not.toBe(raw);
+        expect(mapped).toBe('Gagal melakukan check-in janji temu karena kendala sistem.');
+        expect(mapped).not.toContain('SQLSTATE');
+        expect(mapped).not.toContain('P0006');
+        expect(mapped).not.toContain('BARBER_NOT_OPERATIONALLY_AVAILABLE');
+        expect(mapped).not.toContain('relation');
+        expect(mapped).not.toContain('search_path');
+        expect(mapped).not.toContain('PostgreSQL');
+        expect(mapped).not.toContain('PLPGSQL');
+        expect(mapped).not.toContain('table');
+        expect(mapped).not.toContain('SELECT');
+      }
+    });
+  });
+
+  // Static Assertions on apps/web/src/lib/appointment-checkin-validator.ts
+  describe('Static Assertions on apps/web/src/lib/appointment-checkin-validator.ts', () => {
+    const validatorContent = fs.readFileSync(
+      path.resolve(__dirname, '../lib/appointment-checkin-validator.ts'),
+      'utf8'
+    );
+
+    it('validator never contains record.queue_id ?? record.id', () => {
+      expect(validatorContent).not.toContain('record.queue_id ?? record.id');
+    });
+
+    it('validator never contains record.queue_id || record.id', () => {
+      expect(validatorContent).not.toContain('record.queue_id || record.id');
+    });
+
+    it('validator never assigns expectedAppointmentId as a fallback appointment ID', () => {
+      expect(validatorContent).not.toContain('expectedAppointmentId ||');
+      expect(validatorContent).not.toContain('expectedAppointmentId ??');
+      expect(validatorContent).not.toContain('resolvedApptId = expectedAppointmentId');
+      expect(validatorContent).not.toContain('appointmentId = expectedAppointmentId');
+    });
+
+    it('validator does not contain return rawMessage;', () => {
+      expect(validatorContent).not.toContain('return rawMessage;');
+      expect(validatorContent).not.toContain('return rawMessage');
+    });
   });
 
   // Static Assertions on page.tsx
