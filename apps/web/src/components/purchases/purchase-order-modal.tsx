@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { SupplierItem } from '../../types/purchases';
 import { formatCurrency } from '../../lib/formatters';
+import { mapPurchaseOperationError } from '../../lib/purchase-operation-errors';
 import {
   X,
   PackagePlus,
@@ -39,7 +40,7 @@ export function PurchaseOrderModal({
   onSuccess,
   onOpenNewSupplierModal,
 }: PurchaseOrderModalProps): React.JSX.Element | null {
-  const { supabase, availableOutlets, currentOutlet, profile } = usePos();
+  const { supabase, availableOutlets, currentOutlet } = usePos();
 
   // Master options
   const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
@@ -63,27 +64,30 @@ export function PurchaseOrderModal({
   const loadFormData = useCallback(async () => {
     try {
       // 1. Suppliers
-      const { data: sData } = await supabase
+      const { data: sData, error: supplierError } = await supabase
         .from('suppliers')
         .select('id, code, name, phone, email, address, is_active')
         .eq('is_active', true)
         .order('name');
+      if (supplierError) throw supplierError;
       if (sData) setSuppliers(sData as SupplierItem[]);
       if (sData && sData.length > 0 && !selectedSupplierId) {
         setSelectedSupplierId(sData[0].id);
       }
 
       // 2. Products
-      const { data: pData } = await supabase
+      const { data: pData, error: productError } = await supabase
         .from('products')
         .select('id, name, sku')
         .eq('is_active', true)
         .order('name');
+      if (productError) throw productError;
       if (pData) {
         setProducts(pData as any);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.warn('Load form data note:', err);
+      setErrorMsg(mapPurchaseOperationError(err, 'load'));
     }
   }, [supabase, selectedSupplierId]);
 
@@ -181,7 +185,7 @@ export function PurchaseOrderModal({
         tax_amount: 0,
       }));
 
-      const { error } = await supabase.rpc('create_purchase_order', {
+      const { data, error } = await supabase.rpc('create_purchase_order', {
         p_outlet_id: selectedOutletId,
         p_supplier_id: selectedSupplierId,
         p_items: payloadItems,
@@ -189,10 +193,32 @@ export function PurchaseOrderModal({
         p_tax_amount: parseFloat(taxAmount) || 0,
         p_notes: notes.trim() || null,
         p_auto_receive: autoReceive,
-        p_created_by: profile?.id || null,
+        p_created_by: null,
       });
 
       if (error) throw error;
+
+      const res = data as {
+        success?: boolean;
+        purchase_id?: unknown;
+        purchase_number?: unknown;
+        status?: unknown;
+        total_amount?: unknown;
+        message?: unknown;
+      } | null;
+      if (
+        res?.success !== true ||
+        typeof res.purchase_id !== 'string' ||
+        !res.purchase_id.trim() ||
+        typeof res.purchase_number !== 'string' ||
+        !res.purchase_number.trim() ||
+        res.status !== (autoReceive ? 'RECEIVED' : 'DRAFT') ||
+        typeof res.total_amount !== 'number' ||
+        !Number.isFinite(res.total_amount) ||
+        res.total_amount < 0
+      ) {
+        throw new Error('Respons pesanan pembelian tidak valid.');
+      }
 
       setSuccessMsg(
         autoReceive
@@ -206,8 +232,7 @@ export function PurchaseOrderModal({
       }, 900);
     } catch (err: any) {
       console.error('Error creating purchase order:', err);
-      const msg = err?.message || (err instanceof Error ? err.message : 'Gagal membuat faktur pembelian');
-      setErrorMsg(msg);
+      setErrorMsg(mapPurchaseOperationError(err, 'create'));
     } finally {
       setLoading(false);
     }

@@ -9,6 +9,7 @@ import { PosHeader } from '../../components/pos/pos-header';
 import { PurchaseOrderModal } from '../../components/purchases/purchase-order-modal';
 import { SupplierPaymentModal } from '../../components/purchases/supplier-payment-modal';
 import { SupplierFormModal } from '../../components/purchases/supplier-form-modal';
+import { mapPurchaseOperationError } from '../../lib/purchase-operation-errors';
 import {
   Truck,
   ShoppingBag,
@@ -39,7 +40,6 @@ function PurchasesContent(): React.JSX.Element {
   const {
     supabase,
     availableOutlets,
-    profile,
   } = usePos();
 
   // Active Tab
@@ -184,7 +184,7 @@ function PurchasesContent(): React.JSX.Element {
       setPurchases(formatted);
     } catch (err: unknown) {
       console.error('Error fetching purchases:', err);
-      setErrorMsg(err instanceof Error ? err.message : 'Gagal memuat data pembelian');
+      setErrorMsg(mapPurchaseOperationError(err, 'load'));
     }
   }, [supabase]);
 
@@ -200,6 +200,7 @@ function PurchasesContent(): React.JSX.Element {
       setSuppliers((data || []) as SupplierItem[]);
     } catch (err: unknown) {
       console.error('Error fetching suppliers:', err);
+      setErrorMsg(mapPurchaseOperationError(err, 'supplier_load'));
     }
   }, [supabase]);
 
@@ -231,15 +232,29 @@ Kuantitas stok produk di ${po.outlet_name} akan otomatis bertambah, Moving Avera
     try {
       const { data, error } = await supabase.rpc('receive_purchase_order', {
         p_purchase_id: po.id,
-        p_received_by: profile?.id || null,
+        p_received_by: null,
       });
 
       if (error) throw error;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = data as any;
-      if (res && res.success === false) {
-        throw new Error(res.message || 'Gagal menerima barang');
+      const res = data as {
+        success?: boolean;
+        purchase_id?: unknown;
+        purchase_number?: unknown;
+        status?: unknown;
+        journal_number?: unknown;
+        message?: unknown;
+      } | null;
+      if (
+        res?.success !== true ||
+        res.purchase_id !== po.id ||
+        typeof res.purchase_number !== 'string' ||
+        !res.purchase_number.trim() ||
+        res.status !== 'RECEIVED' ||
+        typeof res.journal_number !== 'string' ||
+        !res.journal_number.trim()
+      ) {
+        throw new Error('Respons penerimaan barang tidak valid.');
       }
 
       setSuccessMsg(
@@ -248,8 +263,7 @@ Kuantitas stok produk di ${po.outlet_name} akan otomatis bertambah, Moving Avera
       await loadPurchases();
     } catch (err: any) {
       console.error('Error receiving purchase order:', err);
-      const msg = err?.message || err?.details || (err instanceof Error ? err.message : 'Gagal memproses penerimaan barang');
-      setErrorMsg(msg);
+      setErrorMsg(mapPurchaseOperationError(err, 'receive'));
     } finally {
       setActionLoadingId(null);
     }

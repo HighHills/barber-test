@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
+import { mapInventoryOperationError } from '../../lib/inventory-operation-errors';
 import { formatCurrency } from '../../lib/formatters';
 import type { InventoryProductView } from '../../types/pos';
 import {
@@ -148,11 +149,7 @@ export function StockAdjustmentModal({
       onClose();
     } catch (err: unknown) {
       console.error('Stock adjustment error:', err);
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Terjadi kesalahan saat memproses penyesuaian stok.'
-      );
+      setErrorMsg(mapInventoryOperationError(err, 'adjustment_save'));
     } finally {
       setIsSubmitting(false);
     }

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { PurchaseOrderItem } from '../../types/purchases';
 import { formatCurrency } from '../../lib/formatters';
+import { mapPurchaseOperationError } from '../../lib/purchase-operation-errors';
 import {
   X,
   CreditCard,
@@ -29,7 +30,7 @@ export function SupplierPaymentModal({
   onClose,
   onSuccess,
 }: SupplierPaymentModalProps): React.JSX.Element | null {
-  const { supabase, profile } = usePos();
+  const { supabase } = usePos();
 
   const [amount, setAmount] = useState<string>('');
   const [accountCode, setAccountCode] = useState<string>('1100'); // '1100' Bank or '1000' Kas
@@ -76,22 +77,52 @@ export function SupplierPaymentModal({
     setLoading(true);
     try {
       // Find financial account id by account code (1000 or 1100)
-      const { data: accData } = await supabase
+      const { data: accData, error: accountError } = await supabase
         .from('financial_accounts')
         .select('id')
         .eq('account_code', accountCode)
         .maybeSingle();
+      if (accountError) throw accountError;
+      if (!accData?.id) throw new Error('Akun pembayaran tidak ditemukan.');
 
-      const { error } = await supabase.rpc('record_supplier_payment', {
+      const { data, error } = await supabase.rpc('record_supplier_payment', {
         p_purchase_id: purchase.id,
         p_amount: payNum,
-        p_financial_account_id: accData?.id || null,
+        p_payment_method_id: null,
+        p_financial_account_id: accData.id,
         p_reference_number: referenceNumber.trim() || null,
         p_notes: notes.trim() || null,
-        p_paid_by: profile?.id || null,
+        p_paid_by: null,
       });
 
       if (error) throw error;
+
+      const res = data as {
+        success?: boolean;
+        payment_id?: unknown;
+        purchase_id?: unknown;
+        amount_paid?: unknown;
+        remaining_debt?: unknown;
+        payment_status?: unknown;
+        journal_number?: unknown;
+      } | null;
+      if (
+        res?.success !== true ||
+        typeof res.payment_id !== 'string' ||
+        !res.payment_id.trim() ||
+        res.purchase_id !== purchase.id ||
+        typeof res.amount_paid !== 'number' ||
+        !Number.isFinite(res.amount_paid) ||
+        res.amount_paid <= 0 ||
+        typeof res.remaining_debt !== 'number' ||
+        !Number.isFinite(res.remaining_debt) ||
+        res.remaining_debt < 0 ||
+        !['PARTIALLY_PAID', 'PAID'].includes(String(res.payment_status)) ||
+        typeof res.journal_number !== 'string' ||
+        !res.journal_number.trim()
+      ) {
+        throw new Error('Respons pembayaran supplier tidak valid.');
+      }
 
       setSuccessMsg('Pembayaran hutang supplier berhasil dicatat dan jurnal akuntansi telah diterbitkan!');
       setTimeout(() => {
@@ -100,8 +131,7 @@ export function SupplierPaymentModal({
       }, 900);
     } catch (err: any) {
       console.error('Error recording payment:', err);
-      const msg = err?.message || (err instanceof Error ? err.message : 'Gagal mencatat pembayaran hutang');
-      setErrorMsg(msg);
+      setErrorMsg(mapPurchaseOperationError(err, 'payment'));
     } finally {
       setLoading(false);
     }

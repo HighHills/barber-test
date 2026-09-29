@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { EmployeeItem, LeaveItem, LeaveStatus, OutletItem } from '../../types/settings';
 import { LeaveFormModal } from './leave-form-modal';
+import { mapEmployeeLeaveOperationError } from '../../lib/employee-leave-operation-errors';
 import {
   Calendar,
   Plus,
@@ -15,6 +16,24 @@ import {
 interface EmployeeLeaveOutletRelation {
   code: string | null;
   name: string | null;
+}
+
+interface LeaveEmployeeRelation {
+  employee_code: string | null;
+  full_name: string | null;
+}
+
+interface LeaveQueryResultRow {
+  id: string;
+  employee_id: string;
+  outlet_id: string;
+  start_at: string;
+  end_at: string;
+  reason: string | null;
+  status: string;
+  created_at: string;
+  employees: LeaveEmployeeRelation | LeaveEmployeeRelation[] | null;
+  outlets: EmployeeLeaveOutletRelation | EmployeeLeaveOutletRelation[] | null;
 }
 
 interface EmployeeLeaveAssignmentRow {
@@ -161,7 +180,8 @@ export function EmployeeLeavePanel({
 
       if (lErr) throw lErr;
 
-      const mapped: LeaveItem[] = (leavesData || []).map((l: any) => {
+      const rawRows = (leavesData || []) as unknown as LeaveQueryResultRow[];
+      const mapped: LeaveItem[] = rawRows.map((l) => {
         const emp = Array.isArray(l.employees) ? l.employees[0] : l.employees;
         const out = Array.isArray(l.outlets) ? l.outlets[0] : l.outlets;
         return {
@@ -184,7 +204,7 @@ export function EmployeeLeavePanel({
       console.error('Error loading leaves:', err);
       onNotification?.({
         type: 'ERROR',
-        message: err instanceof Error ? err.message : 'Gagal memuat data cuti',
+        message: mapEmployeeLeaveOperationError(err, 'load'),
       });
     } finally {
       setIsLoading(false);
@@ -268,7 +288,7 @@ export function EmployeeLeavePanel({
       console.error('Error updating leave status:', err);
       onNotification?.({
         type: 'ERROR',
-        message: err instanceof Error ? err.message : 'Gagal memperbarui status cuti',
+        message: mapEmployeeLeaveOperationError(err, 'status'),
       });
     } finally {
       setStatusUpdatingId(null);

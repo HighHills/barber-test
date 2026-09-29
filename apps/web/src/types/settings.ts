@@ -73,6 +73,8 @@ export interface ScheduleDayItem {
   id?: string;
   day_of_week: number; // 0=Minggu, 1=Senin, ..., 6=Sabtu
   day_name: string;
+  /** True only when a persisted employee_schedules row exists for this day. */
+  is_configured?: boolean;
   is_active: boolean;
   start_time: string; // "HH:MM"
   end_time: string;   // "HH:MM"

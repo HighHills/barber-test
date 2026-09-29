@@ -7,6 +7,11 @@ import type {
   ScheduleDayItem,
   WeeklySchedulePayloadItem,
 } from '../../types/settings';
+import { mapScheduleOperationError } from '../../lib/staff-schedule-operation-errors';
+import {
+  mapEmployeeScheduleRowsToWeek,
+  type EmployeeScheduleRowForMapping,
+} from '../../lib/employee-schedule-mapping';
 import {
   CalendarDays,
   Save,
@@ -53,16 +58,6 @@ interface EmployeeSchedulePanelProps {
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
 }
 
-const defaultWeekDays: Array<{ day_of_week: number; day_name: string }> = [
-  { day_of_week: 1, day_name: 'Senin' },
-  { day_of_week: 2, day_name: 'Selasa' },
-  { day_of_week: 3, day_name: 'Rabu' },
-  { day_of_week: 4, day_name: 'Kamis' },
-  { day_of_week: 5, day_name: 'Jumat' },
-  { day_of_week: 6, day_name: 'Sabtu' },
-  { day_of_week: 0, day_name: 'Minggu' },
-];
-
 export function EmployeeSchedulePanel({
   onNotification,
 }: EmployeeSchedulePanelProps): React.JSX.Element {
@@ -75,6 +70,7 @@ export function EmployeeSchedulePanel({
   const [schedules, setSchedules] = useState<ScheduleDayItem[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // 1. Load Employees with active Outlet Assignments via SELECT
@@ -176,6 +172,14 @@ export function EmployeeSchedulePanel({
 
   // Handle employee change with assignment-aware outlet selection
   const handleEmployeeChange = (newEmpId: string) => {
+    if (
+      isDirty &&
+      !window.confirm('Perubahan jadwal belum disimpan. Buang perubahan tersebut?')
+    ) {
+      return;
+    }
+
+    setIsDirty(false);
     setSelectedEmployeeId(newEmpId);
     const emp = employees.find((e) => e.id === newEmpId);
     const activeAssignments = (emp?.assigned_outlets || []).filter((ao) => ao.is_active);
@@ -187,6 +191,18 @@ export function EmployeeSchedulePanel({
     } else {
       setSelectedOutletId('');
     }
+  };
+
+  const handleOutletChange = (newOutletId: string) => {
+    if (
+      isDirty &&
+      !window.confirm('Perubahan jadwal belum disimpan. Buang perubahan tersebut?')
+    ) {
+      return;
+    }
+
+    setIsDirty(false);
+    setSelectedOutletId(newOutletId);
   };
 
   // Synchronize or validate selectedOutletId when selectedEmployee or activeAssignedOutlets change
@@ -215,6 +231,7 @@ export function EmployeeSchedulePanel({
   const loadSchedules = useCallback(async () => {
     if (!selectedEmployeeId || !selectedOutletId) {
       setSchedules([]);
+      setIsDirty(false);
       return;
     }
 
@@ -231,44 +248,14 @@ export function EmployeeSchedulePanel({
 
       if (error) throw error;
 
-      // Map rows into all 7 days
-      const mapped: ScheduleDayItem[] = defaultWeekDays.map((d) => {
-        const found = (data || []).find((s: any) => s.day_of_week === d.day_of_week);
-        if (found) {
-          const hasBreak = Boolean(found.break_start && found.break_end);
-          return {
-            id: found.id,
-            day_of_week: d.day_of_week,
-            day_name: d.day_name,
-            is_active: Boolean(found.is_active),
-            start_time: found.start_time ? found.start_time.slice(0, 5) : '09:00',
-            end_time: found.end_time ? found.end_time.slice(0, 5) : '21:00',
-            has_break: hasBreak,
-            break_start: found.break_start ? found.break_start.slice(0, 5) : '12:00',
-            break_end: found.break_end ? found.break_end.slice(0, 5) : '13:00',
-          };
-        }
-
-        // Default day off or active
-        const isSun = d.day_of_week === 0;
-        return {
-          day_of_week: d.day_of_week,
-          day_name: d.day_name,
-          is_active: !isSun, // default Sunday is off
-          start_time: '09:00',
-          end_time: '21:00',
-          has_break: true,
-          break_start: '12:00',
-          break_end: '13:00',
-        };
-      });
-
-      setSchedules(mapped);
+      const scheduleRows = (data || []) as unknown as EmployeeScheduleRowForMapping[];
+      setSchedules(mapEmployeeScheduleRowsToWeek(scheduleRows));
+      setIsDirty(false);
     } catch (err: unknown) {
       console.error('Error loading employee schedules:', err);
       onNotification?.({
         type: 'ERROR',
-        message: err instanceof Error ? err.message : 'Gagal memuat jadwal kerja staf',
+        message: mapScheduleOperationError(err, 'load'),
       });
     } finally {
       setIsLoadingSchedules(false);
@@ -287,22 +274,27 @@ export function EmployeeSchedulePanel({
   ) => {
     setSchedules((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      next[index] = { ...next[index], [field]: value, is_configured: true };
       return next;
     });
+    setIsDirty(true);
   };
 
   // Quick action: copy schedule of Monday to Tuesday-Saturday
   const handleCopyMondayToWeek = () => {
     if (schedules.length === 0) return;
     const monday = schedules.find((s) => s.day_of_week === 1);
-    if (!monday) return;
+    if (!monday || !monday.is_configured || !monday.is_active || !monday.start_time || !monday.end_time) {
+      setValidationError('Jadwal hari Senin belum diatur dengan jam kerja yang valid untuk disalin.');
+      return;
+    }
 
     setSchedules((prev) =>
       prev.map((item) => {
         if (item.day_of_week === 0) return item; // Keep Sunday as is
         return {
           ...item,
+          is_configured: true,
           is_active: monday.is_active,
           start_time: monday.start_time,
           end_time: monday.end_time,
@@ -312,6 +304,7 @@ export function EmployeeSchedulePanel({
         };
       })
     );
+    setIsDirty(true);
   };
 
   // 3. Save Schedules via Atomic Weekly RPC (save_employee_weekly_schedule)
@@ -427,7 +420,7 @@ export function EmployeeSchedulePanel({
       await loadSchedules();
     } catch (err: unknown) {
       console.error('Error saving employee schedule:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan jadwal';
+      const msg = mapScheduleOperationError(err, 'save');
       setValidationError(msg);
       onNotification?.({ type: 'ERROR', message: msg });
     } finally {
@@ -456,7 +449,8 @@ export function EmployeeSchedulePanel({
             isLoadingSchedules ||
             !selectedEmployeeId ||
             !selectedOutletId ||
-            activeAssignedOutlets.length === 0
+            activeAssignedOutlets.length === 0 ||
+            !isDirty
           }
           className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md shadow-amber-500/20 disabled:opacity-40"
         >
@@ -528,7 +522,7 @@ export function EmployeeSchedulePanel({
           </label>
           <select
             value={selectedOutletId}
-            onChange={(e) => setSelectedOutletId(e.target.value)}
+            onChange={(e) => handleOutletChange(e.target.value)}
             disabled={activeAssignedOutlets.length === 0}
             className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -586,7 +580,11 @@ export function EmployeeSchedulePanel({
               <div
                 key={day.day_of_week}
                 className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition ${
-                  day.is_active ? 'bg-transparent' : 'bg-slate-950/30 opacity-60'
+                  day.is_configured === false
+                    ? 'bg-slate-950/20'
+                    : day.is_active
+                      ? 'bg-transparent'
+                      : 'bg-slate-950/30 opacity-60'
                 }`}
               >
                 {/* Day name & Active Switch */}
@@ -606,15 +604,19 @@ export function EmployeeSchedulePanel({
                       {day.day_name}
                     </span>
                   </label>
-                  {!day.is_active && (
+                  {day.is_configured === false ? (
+                    <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                      Belum Diatur
+                    </span>
+                  ) : !day.is_active ? (
                     <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
                       Libur
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Working Hours */}
-                {day.is_active ? (
+                {day.is_active && day.is_configured !== false ? (
                   <div className="flex flex-wrap items-center gap-4 text-xs">
                     {/* Shift start / end */}
                     <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-800">
@@ -668,6 +670,10 @@ export function EmployeeSchedulePanel({
                         <span className="text-slate-600 italic text-[11px]">Tanpa istirahat</span>
                       )}
                     </div>
+                  </div>
+                ) : day.is_configured === false ? (
+                  <div className="text-xs text-amber-400 italic">
+                    Jadwal belum diatur untuk cabang ini. Atur jam kerja secara manual.
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 italic">

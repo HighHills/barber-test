@@ -10,6 +10,7 @@ import type {
   InventoryMovementView,
 } from '../../types/pos';
 import { PosHeader } from '../../components/pos/pos-header';
+import { mapInventoryOperationError } from '../../lib/inventory-operation-errors';
 import { StockAdjustmentModal } from '../../components/inventory/stock-adjustment-modal';
 import { StockTransferModal } from '../../components/inventory/stock-transfer-modal';
 import {
@@ -262,15 +263,9 @@ function InventoryContent(): React.JSX.Element {
       setMovements(formattedMovements);
     } catch (err: unknown) {
       console.error('Error fetching inventory data:', err);
-      const errMsg =
-        err instanceof Error
-          ? err.message
-          : (err as any)?.message ||
-            (err as any)?.error_description ||
-            'Gagal memuat data persediaan.';
       setFeedback({
         type: 'error',
-        message: errMsg,
+        message: mapInventoryOperationError(err, 'load'),
       });
     } finally {
       setLoading(false);

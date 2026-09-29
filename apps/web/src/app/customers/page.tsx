@@ -17,6 +17,13 @@ import { TierConfigPanel } from '../../components/crm/tier-config-panel';
 import { LoyaltyLedgerView } from '../../components/crm/loyalty-ledger-view';
 import { customerService } from '../../services/customer-service';
 import {
+  mapSaveHaircutRecordError,
+  mapAdjustPointsError,
+  mapLoadCustomerError,
+  mapSaveCustomerError,
+  mapSaveTierError,
+} from '../../lib/customer-operation-errors';
+import {
   RefreshCw,
   Users,
   Crown,
@@ -252,11 +259,12 @@ function CustomersContent(): React.JSX.Element {
       });
 
       setCustomers(mapped);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading customers:', err);
+      const safeMessage = mapLoadCustomerError(err);
       setNotification({
         type: 'ERROR',
-        message: 'Gagal memuat data pelanggan CRM: ' + (err.message || 'Error tidak diketahui'),
+        message: safeMessage,
       });
     } finally {
       setIsLoading(false);
@@ -479,7 +487,14 @@ function CustomersContent(): React.JSX.Element {
         p_created_by: profile?.id || null,
       });
 
-      if (error) throw error;
+      if (error) {
+        const safeMessage = mapSaveHaircutRecordError(error);
+        setNotification({
+          type: 'ERROR',
+          message: safeMessage,
+        });
+        return;
+      }
 
       setNotification({
         type: 'SUCCESS',
@@ -489,10 +504,11 @@ function CustomersContent(): React.JSX.Element {
       // Reload
       await handleOpenDetailModal(selectedCustomer);
       await loadCustomers();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const safeMessage = mapSaveHaircutRecordError(err);
       setNotification({
         type: 'ERROR',
-        message: 'Gagal menyimpan catatan pangkas: ' + err.message,
+        message: safeMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -513,12 +529,19 @@ function CustomersContent(): React.JSX.Element {
           p_created_by: profile.id,
         });
 
-      if (rpcErr) throw rpcErr;
+      if (rpcErr) {
+        const safeMessage = mapAdjustPointsError(rpcErr);
+        setNotification({
+          type: 'ERROR',
+          message: safeMessage,
+        });
+        return;
+      }
 
       const newBal = Number(updatedBalance);
 
       if (!Number.isFinite(newBal)) {
-        throw new Error('RPC koreksi poin mengembalikan saldo yang tidak valid');
+        throw new Error('INVALID_BALANCE_RETURNED');
       }
 
       setNotification({
@@ -530,10 +553,11 @@ function CustomersContent(): React.JSX.Element {
       await handleOpenDetailModal(selectedCustomer);
       await loadCustomers();
       await loadLoyaltyLedger();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const safeMessage = mapAdjustPointsError(err);
       setNotification({
         type: 'ERROR',
-        message: 'Gagal menyesuaikan poin: ' + err.message,
+        message: safeMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -604,10 +628,12 @@ function CustomersContent(): React.JSX.Element {
       setShowFormModal(false);
       setEditingCustomer(null);
       await loadCustomers();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      console.error('Error saving customer:', err);
+      const safeMessage = mapSaveCustomerError(err);
       setNotification({
         type: 'ERROR',
-        message: 'Gagal menyimpan data pelanggan: ' + err.message,
+        message: safeMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -638,10 +664,12 @@ function CustomersContent(): React.JSX.Element {
 
       await loadTiers();
       await loadCustomers();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      console.error('Error updating customer tier:', err);
+      const safeMessage = mapSaveTierError(err);
       setNotification({
         type: 'ERROR',
-        message: 'Gagal memperbarui aturan tier: ' + err.message,
+        message: safeMessage,
       });
       throw err;
     } finally {

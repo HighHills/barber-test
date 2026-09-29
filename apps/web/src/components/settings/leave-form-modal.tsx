@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { EmployeeItem, LeaveItem, LeaveStatus, OutletItem } from '../../types/settings';
+import { mapEmployeeLeaveOperationError } from '../../lib/employee-leave-operation-errors';
 import { X, Calendar, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface LeaveFormModalProps {
@@ -181,9 +182,8 @@ export function LeaveFormModal({
       });
       onClose();
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan cuti'
-      );
+      console.error('Error saving leave:', err);
+      setErrorMessage(mapEmployeeLeaveOperationError(err, 'save'));
     } finally {
       setIsSubmitting(false);
     }

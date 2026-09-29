@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { EmployeeItem, OutletItem } from '../../types/settings';
+import { mapStaffOperationError } from '../../lib/staff-schedule-operation-errors';
 import {
   X,
   Store,
@@ -59,9 +60,8 @@ export function EmployeeOutletAssignmentModal({
         await onAssignmentChange(employee.id, outletId, isFirst, true);
       }
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Gagal mengubah penugasan outlet'
-      );
+      console.error('Error changing employee outlet assignment:', err);
+      setErrorMessage(mapStaffOperationError(err, 'assignment'));
     } finally {
       setLoadingOutletId(null);
     }
@@ -73,9 +73,8 @@ export function EmployeeOutletAssignmentModal({
     try {
       await onAssignmentChange(employee.id, outletId, true, true);
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Gagal menetapkan cabang utama'
-      );
+      console.error('Error setting primary outlet:', err);
+      setErrorMessage(mapStaffOperationError(err, 'assignment'));
     } finally {
       setLoadingOutletId(null);
     }

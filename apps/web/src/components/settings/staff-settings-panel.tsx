@@ -5,6 +5,7 @@ import { usePos } from '../../context/pos-context';
 import type { EmployeeItem, OutletItem } from '../../types/settings';
 import { EmployeeFormModal } from './employee-form-modal';
 import { EmployeeOutletAssignmentModal } from './employee-outlet-assignment-modal';
+import { mapStaffOperationError } from '../../lib/staff-schedule-operation-errors';
 import {
   Users,
   Plus,
@@ -22,6 +23,33 @@ import {
 
 interface StaffSettingsPanelProps {
   onNotification?: (notif: { type: 'SUCCESS' | 'ERROR'; message: string }) => void;
+}
+
+interface StaffOutletRelation {
+  code: string | null;
+  name: string | null;
+}
+
+interface StaffAssignmentRow {
+  outlet_id: string;
+  is_primary: boolean | null;
+  is_active: boolean | null;
+  outlets: StaffOutletRelation | StaffOutletRelation[] | null;
+}
+
+interface StaffEmployeeRow {
+  id: string;
+  employee_code: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  position: string;
+  hire_date: string;
+  termination_date: string | null;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  employee_outlets: StaffAssignmentRow[] | null;
 }
 
 export function StaffSettingsPanel({
@@ -87,8 +115,9 @@ export function StaffSettingsPanel({
 
       if (empErr) throw empErr;
 
-      const mapped: EmployeeItem[] = (empData || []).map((e: any) => {
-        const assigned = (e.employee_outlets || []).map((ao: any) => {
+      const employeeRows = (empData || []) as unknown as StaffEmployeeRow[];
+      const mapped: EmployeeItem[] = employeeRows.map((e) => {
+        const assigned = (e.employee_outlets || []).map((ao) => {
           const outObj = Array.isArray(ao.outlets) ? ao.outlets[0] : ao.outlets;
           return {
             outlet_id: ao.outlet_id,
@@ -106,36 +135,40 @@ export function StaffSettingsPanel({
           phone: e.phone,
           email: e.email,
           position: e.position,
-          hire_date: e.hire_date,
+          hire_date: e.hire_date || '',
           termination_date: e.termination_date,
           is_active: e.is_active,
-          created_at: e.created_at,
-          updated_at: e.updated_at,
+          created_at: e.created_at ?? undefined,
+          updated_at: e.updated_at ?? undefined,
           assigned_outlets: assigned,
         };
       });
 
       setEmployees(mapped);
 
-      // Keep assigningEmployee updated if modal is open
-      if (assigningEmployee) {
-        const refreshed = mapped.find((m) => m.id === assigningEmployee.id);
-        if (refreshed) setAssigningEmployee(refreshed);
-      }
     } catch (err: unknown) {
       console.error('Error loading employees:', err);
       onNotification?.({
         type: 'ERROR',
-        message: err instanceof Error ? err.message : 'Gagal memuat data staf',
+        message: mapStaffOperationError(err, 'load'),
       });
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, onNotification, assigningEmployee]);
+  }, [supabase, onNotification]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!assigningEmployee) return;
+
+    const refreshed = employees.find((employee) => employee.id === assigningEmployee.id);
+    if (refreshed && refreshed !== assigningEmployee) {
+      setAssigningEmployee(refreshed);
+    }
+  }, [employees, assigningEmployee]);
 
   // Filtered employees
   const filteredEmployees = useMemo(() => {
@@ -229,7 +262,7 @@ export function StaffSettingsPanel({
       console.error('Error toggling employee status:', err);
       onNotification?.({
         type: 'ERROR',
-        message: err instanceof Error ? err.message : 'Gagal mengubah status staf',
+        message: mapStaffOperationError(err, 'status'),
       });
     } finally {
       setTogglingId(null);

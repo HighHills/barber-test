@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
+import { mapInventoryOperationError } from '../../lib/inventory-operation-errors';
 import { formatCurrency } from '../../lib/formatters';
 import type { InventoryProductView } from '../../types/pos';
 import {
@@ -131,11 +132,7 @@ export function StockTransferModal({
       onClose();
     } catch (err: unknown) {
       console.error('Stock transfer error:', err);
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Terjadi kesalahan saat memproses transfer persediaan.'
-      );
+      setErrorMsg(mapInventoryOperationError(err, 'transfer_save'));
     } finally {
       setIsSubmitting(false);
     }

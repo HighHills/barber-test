@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { usePos } from '../../context/pos-context';
+import { mapExpenseOperationError } from '../../lib/expense-operation-errors';
 import type { ExpenseCategory } from '../../types/expenses';
 import { formatCurrency } from '../../lib/formatters';
 import {
@@ -177,9 +178,21 @@ export function ExpenseModal({
       if (error) throw error;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = data as any;
-      if (res && res.success === false) {
-        throw new Error(res.message || 'Gagal mencatat pengeluaran');
+      const res = data as {
+        success?: boolean;
+        expense_id?: string;
+        expense_number?: string;
+        journal_number?: string;
+        message?: string;
+      } | null;
+      if (
+        !res ||
+        res.success !== true ||
+        !res.expense_id ||
+        !res.expense_number ||
+        !res.journal_number
+      ) {
+        throw new Error(res?.message || 'Respons pencatatan biaya dari server tidak valid.');
       }
 
       setSuccessMsg(
@@ -192,8 +205,7 @@ export function ExpenseModal({
       }, 900);
     } catch (err: any) {
       console.error('Error recording expense:', err);
-      const msg = err?.message || err?.details || (err instanceof Error ? err.message : 'Gagal mencatat pengeluaran');
-      setErrorMsg(msg);
+      setErrorMsg(mapExpenseOperationError(err, 'create'));
     } finally {
       setLoading(false);
     }

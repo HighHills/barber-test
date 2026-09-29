@@ -6,6 +6,7 @@ import { RoleGuard } from '../../components/auth/role-guard';
 import type { ExpenseItem, ExpenseCategory } from '../../types/expenses';
 import { PosHeader } from '../../components/pos/pos-header';
 import { ExpenseModal } from '../../components/expenses/expense-modal';
+import { mapExpenseOperationError } from '../../lib/expense-operation-errors';
 import { formatCurrency } from '../../lib/formatters';
 import {
   Receipt,
@@ -30,7 +31,7 @@ import {
 } from 'lucide-react';
 
 function ExpensesContent(): React.JSX.Element {
-  const { supabase, availableOutlets, currentOutlet, profile, isCashier } = usePos();
+  const { supabase, availableOutlets, currentOutlet, profile, isCashier, isOwner } = usePos();
 
   // Data States
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
@@ -61,6 +62,7 @@ function ExpensesContent(): React.JSX.Element {
       if (data) setCategories(data as ExpenseCategory[]);
     } catch (err) {
       console.warn('Load categories warning:', err);
+      setErrorMsg(mapExpenseOperationError(err, 'load'));
     }
   }, [supabase]);
 
@@ -148,7 +150,7 @@ function ExpensesContent(): React.JSX.Element {
       setExpenses(mapped);
     } catch (err: any) {
       console.error('Error loading expenses:', err);
-      setErrorMsg(err?.message || 'Gagal memuat data pengeluaran');
+      setErrorMsg(mapExpenseOperationError(err, 'load'));
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -184,17 +186,16 @@ function ExpensesContent(): React.JSX.Element {
       if (error) throw error;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = data as any;
-      if (res && res.success === false) {
-        throw new Error(res.message || 'Gagal membatalkan biaya');
+      const res = data as { success?: boolean; expense_id?: string; message?: string } | null;
+      if (!res || res.success !== true || res.expense_id !== exp.id) {
+        throw new Error(res?.message || 'Respons pembatalan biaya dari server tidak valid.');
       }
 
       setSuccessMsg(`Pengeluaran ${exp.expense_number} berhasil dibatalkan dan jurnal telah dibalik.`);
       await loadExpenses();
     } catch (err: any) {
       console.error('Error voiding expense:', err);
-      const msg = err?.message || err?.details || (err instanceof Error ? err.message : 'Gagal membatalkan biaya');
-      setErrorMsg(msg);
+      setErrorMsg(mapExpenseOperationError(err, 'void'));
     } finally {
       setActionLoadingId(null);
     }
@@ -583,18 +584,20 @@ function ExpensesContent(): React.JSX.Element {
 
                       {/* Aksi */}
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleVoidExpense(exp)}
-                          disabled={actionLoadingId === exp.id}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition disabled:opacity-50"
-                          title="Batalkan & Balik Jurnal Akuntansi"
-                        >
-                          {actionLoadingId === exp.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
+                        {isOwner ? (
+                          <button
+                            onClick={() => handleVoidExpense(exp)}
+                            disabled={actionLoadingId === exp.id}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition disabled:opacity-50"
+                            title="Batalkan & Balik Jurnal Akuntansi"
+                          >
+                            {actionLoadingId === exp.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

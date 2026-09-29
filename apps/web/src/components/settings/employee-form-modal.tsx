@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { EmployeeItem } from '../../types/settings';
+import { mapStaffOperationError } from '../../lib/staff-schedule-operation-errors';
 import { X, User, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface EmployeeFormModalProps {
@@ -106,9 +107,8 @@ export function EmployeeFormModal({
       });
       onClose();
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan data staff'
-      );
+      console.error('Error saving employee:', err);
+      setErrorMessage(mapStaffOperationError(err, 'save'));
     } finally {
       setIsSubmitting(false);
     }

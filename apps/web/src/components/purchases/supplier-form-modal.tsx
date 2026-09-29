@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { SupplierItem } from '../../types/purchases';
+import { mapPurchaseOperationError } from '../../lib/purchase-operation-errors';
 import {
   X,
   Truck,
@@ -89,7 +90,7 @@ export function SupplierFormModal({
     setLoading(true);
     try {
       // Call RPC upsert_supplier
-      const { error } = await supabase.rpc('upsert_supplier', {
+      const { data, error } = await supabase.rpc('upsert_supplier', {
         p_id: supplier?.id || null,
         p_code: code.trim() || null,
         p_name: name.trim(),
@@ -99,9 +100,10 @@ export function SupplierFormModal({
         p_is_active: isActive,
       });
 
-      if (error) {
-        setErrorMsg(error.message);
-        return;
+      if (error) throw error;
+      const res = data as { success?: boolean; id?: unknown } | null;
+      if (res?.success !== true || typeof res.id !== 'string' || !res.id.trim()) {
+        throw new Error('Respons supplier tidak valid.');
       }
 
       setSuccessMsg('Data supplier berhasil disimpan!');
@@ -110,8 +112,7 @@ export function SupplierFormModal({
         onClose();
       }, 700);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan supplier';
-      setErrorMsg(msg);
+      setErrorMsg(mapPurchaseOperationError(err, 'supplier_save'));
     } finally {
       setLoading(false);
     }
@@ -123,17 +124,18 @@ export function SupplierFormModal({
     setErrorMsg(null);
 
     try {
-      const { error } = await supabase.rpc('delete_supplier', { p_id: supplier.id });
+      const { data, error } = await supabase.rpc('delete_supplier', { p_id: supplier.id });
 
-      if (error) {
-        throw new Error(error.message);
+      if (error) throw error;
+      const res = data as { success?: boolean; id?: unknown } | null;
+      if (res?.success !== true || res.id !== supplier.id) {
+        throw new Error('Respons penghapusan supplier tidak valid.');
       }
 
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menghapus supplier';
-      setErrorMsg(msg);
+      setErrorMsg(mapPurchaseOperationError(err, 'supplier_delete'));
     } finally {
       setDeleting(false);
     }
