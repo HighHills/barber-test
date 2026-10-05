@@ -325,7 +325,7 @@ export function mapCommissionRuleRpcError(
     return 'Profil pengguna aktif diperlukan untuk mengelola aturan komisi.';
   }
 
-  return msg || 'Terjadi kesalahan sistem saat memproses aturan komisi.';
+  return 'Gagal memproses aturan komisi karena kendala sistem.';
 }
 
 // ============================================================================

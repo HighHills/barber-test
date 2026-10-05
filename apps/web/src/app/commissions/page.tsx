@@ -15,6 +15,7 @@ import { BarberPerformanceRank } from '../../components/commissions/barber-perfo
 import { CommissionRuleModal } from '../../components/commissions/commission-rule-modal';
 import { CommissionPayoutModal } from '../../components/commissions/commission-payout-modal';
 import { commissionRuleService } from '../../services/commission-rule-service';
+import { mapCommissionOperationError } from '../../lib/commission-operation-errors';
 import {
   Coins,
   Sliders,
@@ -31,7 +32,6 @@ function CommissionsContent(): React.JSX.Element {
     supabase,
     currentOutlet,
     barbers,
-    isCashier,
   } = usePos();
 
   const [activeTab, setActiveTab] = useState<'LEDGER' | 'RULES' | 'PERFORMANCE'>('LEDGER');
@@ -47,6 +47,7 @@ function CommissionsContent(): React.JSX.Element {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState<boolean>(false);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState<boolean>(false);
+  const [canManageCommissions, setCanManageCommissions] = useState<boolean>(false);
   const [selectedPayoutBarber, setSelectedPayoutBarber] = useState<BarberCommissionSummary | null>(null);
 
   // Notifications
@@ -106,6 +107,24 @@ function CommissionsContent(): React.JSX.Element {
       }
     } catch (err) {
       console.warn('Catalog load note:', err);
+    }
+  }, [supabase, currentOutlet]);
+
+  const loadCommissionPermission = useCallback(async () => {
+    if (!currentOutlet) {
+      setCanManageCommissions(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase.rpc('current_user_has_permission', {
+        p_perm_code: 'commission.manage',
+        p_outlet_id: currentOutlet.id,
+      });
+      if (error) throw error;
+      setCanManageCommissions(data === true);
+    } catch (err: unknown) {
+      console.error('Commission permission check error:', err);
+      setCanManageCommissions(false);
     }
   }, [supabase, currentOutlet]);
 
@@ -218,7 +237,7 @@ function CommissionsContent(): React.JSX.Element {
   // Refresh All Data
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([loadCatalog(), loadCommissions(), loadRules()]);
+    await Promise.all([loadCatalog(), loadCommissions(), loadRules(), loadCommissionPermission()]);
     setIsRefreshing(false);
   };
 
@@ -229,7 +248,7 @@ function CommissionsContent(): React.JSX.Element {
 
     const init = async () => {
       setIsLoading(true);
-      await Promise.all([loadCatalog(), loadCommissions(), loadRules()]);
+      await Promise.all([loadCatalog(), loadCommissions(), loadRules(), loadCommissionPermission()]);
       if (isMounted) setIsLoading(false);
     };
 
@@ -237,7 +256,7 @@ function CommissionsContent(): React.JSX.Element {
     return () => {
       isMounted = false;
     };
-  }, [currentOutlet, loadCatalog, loadCommissions, loadRules]);
+  }, [currentOutlet, loadCatalog, loadCommissions, loadRules, loadCommissionPermission]);
 
   // Compute Barber Summaries
   const barberSummaries: BarberCommissionSummary[] = useMemo(() => {
@@ -272,6 +291,10 @@ function CommissionsContent(): React.JSX.Element {
 
   // Rule Handlers
   const handleToggleRuleActive = async (ruleId: string, currentActive: boolean) => {
+    if (!canManageCommissions) {
+      setFeedback({ type: 'error', message: mapCommissionOperationError({ code: '42501' }, 'rule') });
+      return;
+    }
     try {
       await commissionRuleService.setActive(ruleId, !currentActive, supabase);
       await loadRules();
@@ -283,12 +306,16 @@ function CommissionsContent(): React.JSX.Element {
       console.error('Toggle rule error:', err);
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal mengubah status aturan.',
+        message: mapCommissionOperationError(err, 'rule'),
       });
     }
   };
 
   const handleDeleteRule = async (ruleId: string) => {
+    if (!canManageCommissions) {
+      setFeedback({ type: 'error', message: mapCommissionOperationError({ code: '42501' }, 'rule') });
+      return;
+    }
     if (!confirm('Apakah Anda yakin ingin menghapus aturan komisi ini?')) return;
     try {
       await commissionRuleService.deleteRule(ruleId, supabase);
@@ -301,13 +328,17 @@ function CommissionsContent(): React.JSX.Element {
       console.error('Delete rule error:', err);
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal menghapus aturan komisi.',
+        message: mapCommissionOperationError(err, 'rule'),
       });
     }
   };
 
   // Payout Open Handler
   const handleOpenPayout = (summary: BarberCommissionSummary) => {
+    if (!canManageCommissions) {
+      setFeedback({ type: 'error', message: mapCommissionOperationError({ code: '42501' }, 'payout') });
+      return;
+    }
     setSelectedPayoutBarber(summary);
     setIsPayoutModalOpen(true);
   };
@@ -353,7 +384,7 @@ function CommissionsContent(): React.JSX.Element {
               <span className="hidden sm:inline">Segarkan</span>
             </button>
 
-            {!isCashier && (
+            {canManageCommissions && (
               <button
                 onClick={() => setIsRuleModalOpen(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs transition min-h-[40px]"
@@ -453,6 +484,7 @@ function CommissionsContent(): React.JSX.Element {
                 commissions={commissions}
                 barberSummaries={barberSummaries}
                 barbers={barbers}
+                canManageCommissions={canManageCommissions}
                 onOpenPayoutModal={handleOpenPayout}
               />
             )}
@@ -461,6 +493,7 @@ function CommissionsContent(): React.JSX.Element {
             {activeTab === 'RULES' && (
               <CommissionRulesManager
                 rules={rules}
+                canManageCommissions={canManageCommissions}
                 onOpenCreateModal={() => setIsRuleModalOpen(true)}
                 onToggleActive={handleToggleRuleActive}
                 onDeleteRule={handleDeleteRule}

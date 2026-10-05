@@ -22,6 +22,7 @@ import { CloseSessionReconcileModal } from '../../components/accounting/close-se
 import { FinancialPeriodsManager } from '../../components/accounting/financial-periods-manager';
 import { CashSessionModal } from '../../components/pos/cash-session-modal';
 import { RoleGuard } from '../../components/auth/role-guard';
+import { mapAccountingOperationError } from '../../lib/accounting-operation-errors';
 import {
   RefreshCw,
   TrendingUp,
@@ -119,7 +120,7 @@ function AccountingContent(): React.JSX.Element {
         });
       } catch (err: unknown) {
         if (activeRequestIdRef.current !== requestId) return;
-        const msg = err instanceof Error ? err.message : 'Gagal memuat data akuntansi.';
+        const msg = mapAccountingOperationError(err, 'load');
         console.error('Error loading financial accounts:', err);
         setFeedback({ type: 'error', message: msg });
       }
@@ -146,7 +147,7 @@ function AccountingContent(): React.JSX.Element {
         setLedgerEntries(entries);
       } catch (err: unknown) {
         if (activeRequestIdRef.current !== requestId) return;
-        const msg = err instanceof Error ? err.message : 'Gagal memuat mutasi buku besar.';
+        const msg = mapAccountingOperationError(err, 'load');
         console.error('Error loading general ledger entries:', err);
         setFeedback({ type: 'error', message: msg });
       }
@@ -170,7 +171,7 @@ function AccountingContent(): React.JSX.Element {
         setActiveReconciliation(active || null);
       } catch (err: unknown) {
         if (activeRequestIdRef.current !== requestId) return;
-        const msg = err instanceof Error ? err.message : 'Gagal memuat rekonsiliasi sesi kasir.';
+        const msg = mapAccountingOperationError(err, 'load');
         console.error('Error loading cash sessions:', err);
         setFeedback({ type: 'error', message: msg });
       }
@@ -184,7 +185,7 @@ function AccountingContent(): React.JSX.Element {
       const periodList = await accountingService.fetchFinancialPeriods(supabase);
       setPeriods(periodList);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memuat periode buku akuntansi.';
+      const msg = mapAccountingOperationError(err, 'load');
       console.error('Error loading financial periods:', err);
       setFeedback({ type: 'error', message: msg });
     }
@@ -262,7 +263,7 @@ function AccountingContent(): React.JSX.Element {
       }
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menutup sesi kasir.';
+      const msg = mapAccountingOperationError(err, 'close-session');
       return { success: false, error: msg };
     }
   };
@@ -288,7 +289,7 @@ function AccountingContent(): React.JSX.Element {
     } catch (err: unknown) {
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Gagal menutup periode akuntansi.',
+        message: mapAccountingOperationError(err, 'close-period'),
       });
     } finally {
       setIsClosingPeriod(false);

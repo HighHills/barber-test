@@ -5,6 +5,10 @@ import { usePos } from '../../context/pos-context';
 import type { BarberCommissionSummary, CommissionItemView } from '../../types/pos';
 import { formatCurrency } from '../../lib/formatters';
 import {
+  mapCommissionOperationError,
+  parseCommissionPayoutResponse,
+} from '../../lib/commission-operation-errors';
+import {
   X,
   Building2,
   Wallet,
@@ -80,25 +84,19 @@ export function CommissionPayoutModal({
         throw error;
       }
 
-      const payoutData = Array.isArray(data) ? data[0] : data;
-      const payoutObj = payoutData as { total_amount?: number | string; journal_number?: string } | null;
-      const payoutAmount =
-        payoutObj?.total_amount != null && !isNaN(Number(payoutObj.total_amount))
-          ? Number(payoutObj.total_amount)
-          : totalPayout;
-      const journalPart = payoutObj?.journal_number
-        ? ` Jurnal Akuntansi ${payoutObj.journal_number} telah terposting.`
-        : '';
+      const payout = parseCommissionPayoutResponse(data, {
+        employeeId: barberSummary.employee_id,
+        outletId: currentOutlet.id,
+        paymentSource,
+      });
 
       onSuccess(
-        `Pembayaran komisi sebesar ${formatCurrency(payoutAmount)} untuk ${barberSummary.employee_name} berhasil dicairkan.${journalPart}`
+        `Pembayaran komisi sebesar ${formatCurrency(payout.totalAmount)} untuk ${barberSummary.employee_name} berhasil dicairkan. Jurnal Akuntansi ${payout.journalNumber} telah terposting.`
       );
       onClose();
     } catch (err: unknown) {
       console.error('Commission payout error:', err);
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Terjadi kegagalan memproses pembayaran komisi.'
-      );
+      setErrorMessage(mapCommissionOperationError(err, 'payout'));
     } finally {
       setIsSubmitting(false);
     }

@@ -16,6 +16,7 @@ import {
 
 interface CommissionRulesManagerProps {
   rules: CommissionRuleView[];
+  canManageCommissions: boolean;
   onOpenCreateModal: () => void;
   onToggleActive: (ruleId: string, currentActive: boolean) => Promise<void>;
   onDeleteRule: (ruleId: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface CommissionRulesManagerProps {
 
 export function CommissionRulesManager({
   rules,
+  canManageCommissions,
   onOpenCreateModal,
   onToggleActive,
   onDeleteRule,
@@ -45,13 +47,13 @@ export function CommissionRulesManager({
               </p>
             </div>
           </div>
-          <button
+          {canManageCommissions && <button
             onClick={onOpenCreateModal}
             className="px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Tambah Aturan Baru</span>
-          </button>
+          </button>}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
@@ -183,7 +185,7 @@ export function CommissionRulesManager({
                       {r.effective_until ? ` s/d ${r.effective_until}` : ' (Seterusnya)'}
                     </td>
                     <td className="py-3 px-3">
-                      <button
+                      {canManageCommissions ? <button
                         onClick={() => onToggleActive(r.id, r.is_active)}
                         className={`px-2 py-0.5 rounded-full font-bold text-[10px] transition-colors cursor-pointer ${
                           r.is_active
@@ -193,16 +195,16 @@ export function CommissionRulesManager({
                         title="Klik untuk ubah status aktif"
                       >
                         {r.is_active ? '● Aktif' : '○ Non-aktif'}
-                      </button>
+                      </button> : <span className="text-[10px] text-slate-400">Lihat saja</span>}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <button
+                      {canManageCommissions && <button
                         onClick={() => onDeleteRule(r.id)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Hapus Aturan"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { BarberEmployee, CatalogItem } from '../../types/pos';
 import { commissionRuleService } from '../../services/commission-rule-service';
+import { mapCommissionOperationError } from '../../lib/commission-operation-errors';
 import {
   X,
   Sliders,
@@ -108,7 +109,7 @@ export function CommissionRuleModal({
       onClose();
     } catch (err: unknown) {
       console.error('Save rule error:', err);
-      setErrorMessage(err instanceof Error ? err.message : 'Terjadi kegagalan menyimpan aturan komisi.');
+      setErrorMessage(mapCommissionOperationError(err, 'rule'));
     } finally {
       setIsSubmitting(false);
     }

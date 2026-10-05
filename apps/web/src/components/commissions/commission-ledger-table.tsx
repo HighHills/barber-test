@@ -21,6 +21,7 @@ interface CommissionLedgerTableProps {
   commissions: CommissionItemView[];
   barberSummaries: BarberCommissionSummary[];
   barbers: BarberEmployee[];
+  canManageCommissions: boolean;
   onOpenPayoutModal: (summary: BarberCommissionSummary) => void;
 }
 
@@ -28,6 +29,7 @@ export function CommissionLedgerTable({
   commissions,
   barberSummaries,
   barbers,
+  canManageCommissions,
   onOpenPayoutModal,
 }: CommissionLedgerTableProps): React.JSX.Element {
   const [selectedBarberFilter, setSelectedBarberFilter] = useState<string>('ALL');
@@ -210,17 +212,17 @@ export function CommissionLedgerTable({
 
               <div className="pt-2 border-t border-slate-100">
                 <button
-                  disabled={summary.unpaid_amount <= 0}
+                  disabled={summary.unpaid_amount <= 0 || !canManageCommissions}
                   onClick={() => onOpenPayoutModal(summary)}
                   className={`w-full py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                    summary.unpaid_amount > 0
+                    summary.unpaid_amount > 0 && canManageCommissions
                       ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer'
                       : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   }`}
                 >
                   <CreditCard className="w-3.5 h-3.5" />
                   <span>
-                    {summary.unpaid_amount > 0 ? 'Bayar Komisi (Payout)' : 'Saldo Lunas'}
+                    {summary.unpaid_amount <= 0 ? 'Saldo Lunas' : canManageCommissions ? 'Bayar Komisi (Payout)' : 'Tidak Memiliki Akses Payout'}
                   </span>
                 </button>
               </div>

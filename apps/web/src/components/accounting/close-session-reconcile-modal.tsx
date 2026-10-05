@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import type { CashSessionDetailedReconciliation } from '../../types/pos';
 import { formatCurrency } from '../../lib/formatters';
+import { mapAccountingOperationError } from '../../lib/accounting-operation-errors';
 import {
   X,
   Lock,
@@ -90,7 +91,7 @@ export function CloseSessionReconcileModal({
       );
       onClose();
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Terjadi kegagalan menutup sesi kasir.');
+      setErrorMessage(mapAccountingOperationError(err, 'close-session'));
     } finally {
       setIsSubmitting(false);
     }
