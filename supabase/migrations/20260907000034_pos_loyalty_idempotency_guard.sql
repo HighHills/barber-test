@@ -343,7 +343,7 @@ BEGIN
   );
 
 END;
-$function$
+$function$;
 
 REVOKE ALL ON FUNCTION public.process_pos_sale_with_loyalty(
   UUID, VARCHAR, UUID, UUID, UUID, JSONB, JSONB, NUMERIC, TEXT, INTEGER

@@ -108,12 +108,13 @@ export default function PublicBookingPage(): React.JSX.Element {
             setSelectedOutlet(data[0]);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Gagal memuat daftar cabang.';
         if (process.env.NODE_ENV === 'development') {
-          console.error('Error loading outlets:', err?.message || err);
+          console.error('Error loading outlets:', err);
         }
         if (isMounted) {
-          setErrorMessage(err?.message || 'Gagal memuat daftar cabang.');
+          setErrorMessage(message);
         }
       } finally {
         if (isMounted) setIsLoadingOutlets(false);
@@ -146,11 +147,11 @@ export default function PublicBookingPage(): React.JSX.Element {
             setSelectedService(srvData[0]);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (process.env.NODE_ENV === 'development') {
           console.error(
             'Error loading outlet services/barbers:',
-            err?.message || err
+            err
           );
         }
       } finally {
@@ -165,7 +166,7 @@ export default function PublicBookingPage(): React.JSX.Element {
     return () => {
       isMounted = false;
     };
-  }, [selectedOutlet]);
+  }, [selectedOutlet, selectedService]);
 
   // 3. When Date, Outlet, Barber, or Service changes, calculate available slots
   const loadSlots = useCallback(async () => {
@@ -188,11 +189,11 @@ export default function PublicBookingPage(): React.JSX.Element {
           setSelectedTimeSlot(null);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (process.env.NODE_ENV === 'development') {
         console.error(
           'Error fetching available slots:',
-          err?.message || err
+          err
         );
       }
     } finally {
@@ -283,9 +284,9 @@ export default function PublicBookingPage(): React.JSX.Element {
       setConfirmation(result);
       clearErrors();
       setCurrentStep(6); // Go to success ticket
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Booking submission error:', err?.message || err);
+        console.error('Booking submission error:', err);
       }
       const formatted = formatBookingError(err, {
         service: selectedService,
@@ -1707,7 +1708,7 @@ function BookingErrorAlert({
               className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-sky-500/20"
             >
               <UserCheck className="w-3.5 h-3.5" />
-              <span>Gunakan Opsi "Siapa Saja"</span>
+              <span>Gunakan Opsi &quot;Siapa Saja&quot;</span>
             </button>
           )}
 

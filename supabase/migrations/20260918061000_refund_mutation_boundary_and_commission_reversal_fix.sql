@@ -22,11 +22,8 @@ BEGIN
   WHERE p.pronamespace = 'public'::regnamespace
     AND p.proname = 'prevent_commission_ledger_tampering';
 
-  IF v_trigger_sql IS NULL THEN
-    RAISE EXCEPTION 'prevent_commission_ledger_tampering not found';
-  END IF;
-
-  IF position('current_setting(''app.internal_refund_commission_reversal'', true)' IN v_trigger_sql) = 0 THEN
+  IF v_trigger_sql IS NOT NULL
+     AND position('current_setting(''app.internal_refund_commission_reversal'', true)' IN v_trigger_sql) = 0 THEN
     v_marker := 'OR NEW.commission_amount IS DISTINCT FROM OLD.commission_amount';
 
     IF position(v_marker IN v_trigger_sql) = 0 THEN

@@ -27,6 +27,58 @@ import {
   X,
 } from 'lucide-react';
 
+type CommissionNamedRelation = { name?: string | null; full_name?: string | null } | null;
+type CommissionCatalogOutlet = { selling_price?: number | string | null } | { selling_price?: number | string | null }[] | null;
+
+type CommissionCatalogRow = {
+  id: string;
+  code?: string | null;
+  sku?: string | null;
+  name: string;
+  service_outlets?: CommissionCatalogOutlet;
+  product_outlets?: CommissionCatalogOutlet;
+};
+
+type CommissionLedgerRow = {
+  id: string;
+  sale_id: string;
+  employee_id: string;
+  outlet_id: string;
+  commission_type: CommissionItemView['commission_type'];
+  commission_rate: number | string | null;
+  commission_amount: number | string | null;
+  status: CommissionItemView['status'];
+  earned_at: string;
+  paid_at: string | null;
+  sales: { invoice_number?: string | null } | null;
+  sale_items: { description_snapshot?: string | null; item_type?: CommissionItemView['item_type'] | null; total_amount?: number | string | null } | null;
+  employees: { full_name?: string | null } | null;
+};
+
+type CommissionRuleRow = {
+  id: string;
+  employee_id: string | null;
+  service_id: string | null;
+  product_id: string | null;
+  outlet_id: string | null;
+  commission_type: CommissionRuleView['commission_type'];
+  commission_rate: number | string | null;
+  fixed_amount: number | string | null;
+  effective_from: string;
+  effective_until: string | null;
+  priority: number | null;
+  is_active: boolean;
+  employees: CommissionNamedRelation;
+  services: CommissionNamedRelation;
+  products: CommissionNamedRelation;
+  outlets: CommissionNamedRelation;
+};
+
+function catalogSellingPrice(relation: CommissionCatalogOutlet | undefined): number {
+  const outlet = Array.isArray(relation) ? relation[0] : relation;
+  return Number(outlet?.selling_price) || 0;
+}
+
 function CommissionsContent(): React.JSX.Element {
   const {
     supabase,
@@ -73,12 +125,12 @@ function CommissionsContent(): React.JSX.Element {
         .eq('service_outlets.outlet_id', currentOutlet.id);
 
       if (srvData) {
-        const mappedSrv: CatalogItem[] = srvData.map((s: any) => ({
+        const mappedSrv: CatalogItem[] = (srvData as CommissionCatalogRow[]).map((s) => ({
           id: s.id,
           type: 'SERVICE',
-          code: s.code,
+          code: s.code || '',
           name: s.name,
-          selling_price: Number(s.service_outlets?.[0]?.selling_price || s.service_outlets?.selling_price) || 0,
+          selling_price: catalogSellingPrice(s.service_outlets),
         }));
         setServices(mappedSrv);
       }
@@ -96,12 +148,12 @@ function CommissionsContent(): React.JSX.Element {
         .eq('product_outlets.outlet_id', currentOutlet.id);
 
       if (prdData) {
-        const mappedPrd: CatalogItem[] = prdData.map((p: any) => ({
+        const mappedPrd: CatalogItem[] = (prdData as CommissionCatalogRow[]).map((p) => ({
           id: p.id,
           type: 'PRODUCT',
-          code: p.sku,
+          code: p.sku || '',
           name: p.name,
-          selling_price: Number(p.product_outlets?.[0]?.selling_price || p.product_outlets?.selling_price) || 0,
+          selling_price: catalogSellingPrice(p.product_outlets),
         }));
         setProducts(mappedPrd);
       }
@@ -155,7 +207,7 @@ function CommissionsContent(): React.JSX.Element {
 
       if (error) throw error;
 
-      const mapped: CommissionItemView[] = (data || []).map((c: any) => ({
+      const mapped: CommissionItemView[] = ((data || []) as CommissionLedgerRow[]).map((c) => ({
         id: c.id,
         sale_id: c.sale_id,
         invoice_number: c.sales?.invoice_number || 'INV-UNKNOWN',
@@ -208,7 +260,7 @@ function CommissionsContent(): React.JSX.Element {
 
       if (error) throw error;
 
-      const mapped: CommissionRuleView[] = (data || []).map((r: any) => ({
+      const mapped: CommissionRuleView[] = ((data || []) as CommissionRuleRow[]).map((r) => ({
         id: r.id,
         employee_id: r.employee_id,
         employee_name: r.employees?.full_name || null,

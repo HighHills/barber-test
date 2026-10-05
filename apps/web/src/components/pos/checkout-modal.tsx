@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { CartLineItem, CompletedSale, CustomerDetailCRM } from '../../types/pos';
 import type { CartCalculationResult } from '@barber/business-rules';
 import { checkoutPosSaleSchema } from '@barber/validators';
 import { formatCurrency } from '../../lib/formatters';
+import { mapPosOperationError, parsePosSaleResponse } from '../../lib/pos-operation-errors';
 import {
   CreditCard,
   Banknote,
@@ -80,6 +81,8 @@ export function CheckoutModal({
   // Status
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Keep the key across a retry after uncertain transport failure; the server is idempotent.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   // Sync defaults when paymentMethods load async after mount.
   useEffect(() => {
@@ -205,7 +208,10 @@ export function CheckoutModal({
       }
 
       // 3. Unique Idempotency Key
-      const idempotencyKey = typeof crypto !== 'undefined' ? crypto.randomUUID() : `sale-${Date.now()}`;
+      const idempotencyKey = idempotencyKeyRef.current || (
+        typeof crypto !== 'undefined' ? crypto.randomUUID() : `sale-${Date.now()}`
+      );
+      idempotencyKeyRef.current = idempotencyKey;
 
       const pointsToRedeem = useLoyaltyPoints && customer && maxRedeemablePoints > 0
         ? maxRedeemablePoints
@@ -265,38 +271,32 @@ export function CheckoutModal({
       if (rpcErr) throw rpcErr;
 
       // 5. Package Completed Sale for Receipt Preview
-      const resultData = data as any;
-      const serverSaleId: string = resultData?.sale_id || idempotencyKey;
-      const serverInvoice: string = resultData?.invoice_number || `INV-${Date.now()}`;
-      const serverTotal: number =
-        typeof resultData?.total_amount === 'number'
-          ? resultData.total_amount
-          : Number(resultData?.total_amount) || finalPayable;
-
-      let receiptSubtotal = calculation.subtotal;
-      let receiptDiscount = calculation.total_discount;
-      let receiptTax = calculation.tax_amount;
-      let receiptTotal = serverTotal;
-      let receiptSoldAt = new Date().toISOString();
-
-      const { data: serverSale } = await supabase
+      const resultData = parsePosSaleResponse(data);
+      const { data: serverSale, error: serverSaleError } = await supabase
         .from('sales')
         .select('invoice_number, subtotal, discount_amount, tax_amount, total_amount, sold_at')
-        .eq('id', serverSaleId)
+        .eq('id', resultData.saleId)
         .maybeSingle();
-
-      if (serverSale) {
-        receiptSubtotal = Number(serverSale.subtotal) || receiptSubtotal;
-        receiptDiscount = Number(serverSale.discount_amount) || 0;
-        receiptTax = Number(serverSale.tax_amount) || 0;
-        receiptTotal = Number(serverSale.total_amount) || receiptTotal;
-        receiptSoldAt = serverSale.sold_at || receiptSoldAt;
+      if (serverSaleError || !serverSale ||
+          typeof serverSale.invoice_number !== 'string' || !serverSale.invoice_number.trim() ||
+          !Number.isFinite(Number(serverSale.subtotal)) ||
+          !Number.isFinite(Number(serverSale.discount_amount ?? 0)) ||
+          !Number.isFinite(Number(serverSale.tax_amount ?? 0)) ||
+          !Number.isFinite(Number(serverSale.total_amount)) ||
+          typeof serverSale.sold_at !== 'string' || !serverSale.sold_at.trim()) {
+        throw new Error('POS_RECEIPT_READ_INVALID');
       }
+
+      const receiptSubtotal = Number(serverSale.subtotal);
+      const receiptDiscount = Number(serverSale.discount_amount ?? 0);
+      const receiptTax = Number(serverSale.tax_amount ?? 0);
+      const receiptTotal = Number(serverSale.total_amount);
+      const receiptSoldAt = serverSale.sold_at;
 
       const receiptChange = isCash ? Math.max(0, tenderedCash - receiptTotal) : 0;
       const completedSale: CompletedSale = {
-        id: serverSaleId,
-        invoice_number: (serverSale as any)?.invoice_number || serverInvoice,
+        id: resultData.saleId,
+        invoice_number: serverSale.invoice_number,
         outlet_id: currentOutlet.id,
         outlet_name: currentOutlet.name,
         cashier_name: profile.display_name,
@@ -304,8 +304,8 @@ export function CheckoutModal({
         customer_id: customer?.id || null,
         customer_phone: customer?.phone || null,
         customer_points:
-          typeof resultData?.new_points_balance === 'number'
-            ? resultData.new_points_balance
+          resultData.newPointsBalance !== null
+            ? resultData.newPointsBalance
             : customer?.current_loyalty_points || null,
         sold_at: receiptSoldAt,
         subtotal: receiptSubtotal,
@@ -336,10 +336,10 @@ export function CheckoutModal({
       };
 
       onSuccess(completedSale);
+      idempotencyKeyRef.current = null;
     } catch (err: unknown) {
       console.error('Sale transaction error:', err);
-      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan saat memproses transaksi';
-      setErrorMessage(msg);
+      setErrorMessage(mapPosOperationError(err));
     } finally {
       setIsSubmitting(false);
     }

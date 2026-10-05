@@ -35,6 +35,9 @@ describe('Database, Security & Transaction Integrity Suite (Phase 0.5 Pass Verif
 
     // 0. Bootstrap test-only auth mocks for PGlite
     await db.exec(`
+      DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       CREATE SCHEMA IF NOT EXISTS auth;
       CREATE OR REPLACE FUNCTION auth.uid()
       RETURNS UUID AS $$
@@ -42,7 +45,7 @@ describe('Database, Security & Transaction Integrity Suite (Phase 0.5 Pass Verif
       $$ LANGUAGE sql STABLE;
     `);
 
-    // 1. Run all 13 migrations in order
+    // 1. Run all tracked migrations in order
     const migDir = path.resolve(__dirname, '../../../../supabase/migrations');
     const files = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort();
 

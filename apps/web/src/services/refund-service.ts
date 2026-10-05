@@ -210,7 +210,7 @@ export function mapRefundRpcError(error: { code?: string; message?: string } | s
     return 'Total refund harus lebih dari 0.';
   }
 
-  return msg || 'Terjadi kesalahan sistem saat memproses pengembalian dana.';
+  return 'Terjadi kendala sistem saat memproses pengembalian dana. Tidak ada refund yang dibuat.';
 }
 
 // ============================================================================

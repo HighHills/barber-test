@@ -8,18 +8,15 @@
 
 BEGIN;
 
-REVOKE EXECUTE
-  ON FUNCTION public.save_employee_schedule(
-    uuid,
-    uuid,
-    uuid,
-    smallint,
-    time without time zone,
-    time without time zone,
-    time without time zone,
-    time without time zone,
-    boolean
-  )
-  FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF to_regprocedure('public.save_employee_schedule(uuid,uuid,uuid,smallint,time,time,time,time,boolean)') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.save_employee_schedule(
+      uuid, uuid, uuid, smallint, time without time zone, time without time zone,
+      time without time zone, time without time zone, boolean
+    ) FROM PUBLIC, anon, authenticated;
+  END IF;
+END;
+$$;
 
 COMMIT;

@@ -471,7 +471,7 @@ export function ProductCategoriesPanel({
                   Nonaktifkan kategori?
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Kategori <span className="text-amber-300 font-bold">"{confirmDeactivateCategory.name}"</span> saat ini digunakan oleh{' '}
+                  Kategori <span className="text-amber-300 font-bold">&quot;{confirmDeactivateCategory.name}&quot;</span> saat ini digunakan oleh{' '}
                   <span className="font-bold text-white">{confirmDeactivateCategory.product_count} produk</span>.
                 </p>
               </div>

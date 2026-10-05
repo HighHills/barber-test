@@ -34,15 +34,37 @@ BEGIN
     IF v_category_name IS NULL THEN RAISE EXCEPTION 'Kategori layanan wajib dipilih'; END IF;
     SELECT id INTO v_category_id FROM service_categories WHERE lower(trim(name))=lower(v_category_name) ORDER BY id LIMIT 1;
     IF v_category_id IS NULL THEN
-      v_result := public.save_service_category(NULL,v_category_name,NULL,0,true);
-      v_category_id := (v_result->>'category_id')::uuid;
+      INSERT INTO public.service_categories (name, description, sort_order, is_active)
+      VALUES (v_category_name, NULL, 0, TRUE)
+      RETURNING id INTO v_category_id;
     END IF;
   ELSE
     IF NOT EXISTS (SELECT 1 FROM service_categories WHERE id=v_category_id) THEN RAISE EXCEPTION 'Kategori layanan tidak valid'; END IF;
   END IF;
-  v_result := public.save_service(p_service_id,v_category_id,p_code,p_name,p_description,p_duration_minutes,p_default_cost_price,p_is_active);
-  v_service_id := (v_result->>'service_id')::uuid;
-  PERFORM public.save_service_outlet(v_service_id,p_outlet_id,p_selling_price,p_is_active);
+  IF p_service_id IS NULL THEN
+    INSERT INTO public.services (
+      category_id, code, name, description, duration_minutes, default_cost_price, is_active
+    ) VALUES (
+      v_category_id, p_code, p_name, p_description, p_duration_minutes, p_default_cost_price, p_is_active
+    ) RETURNING id INTO v_service_id;
+  ELSE
+    UPDATE public.services
+    SET category_id = v_category_id,
+        code = p_code,
+        name = p_name,
+        description = p_description,
+        duration_minutes = p_duration_minutes,
+        default_cost_price = p_default_cost_price,
+        is_active = p_is_active,
+        updated_at = clock_timestamp()
+    WHERE id = p_service_id
+    RETURNING id INTO v_service_id;
+    IF v_service_id IS NULL THEN RAISE EXCEPTION 'Layanan tidak ditemukan'; END IF;
+  END IF;
+  INSERT INTO public.service_outlets (service_id, outlet_id, selling_price, is_active)
+  VALUES (v_service_id, p_outlet_id, p_selling_price, p_is_active)
+  ON CONFLICT (service_id, outlet_id) DO UPDATE
+  SET selling_price = EXCLUDED.selling_price, is_active = EXCLUDED.is_active;
   RETURN jsonb_build_object('success',true,'service_id',v_service_id,'category_id',v_category_id);
 END;
 $$;
@@ -81,15 +103,38 @@ BEGIN
     IF v_category_name IS NULL THEN RAISE EXCEPTION 'Kategori produk wajib dipilih'; END IF;
     SELECT id INTO v_category_id FROM product_categories WHERE lower(trim(name))=lower(v_category_name) ORDER BY id LIMIT 1;
     IF v_category_id IS NULL THEN
-      v_result := public.save_product_category(NULL,v_category_name,NULL,0,true);
-      v_category_id := (v_result->>'category_id')::uuid;
+      INSERT INTO public.product_categories (name, description, sort_order, is_active)
+      VALUES (v_category_name, NULL, 0, TRUE)
+      RETURNING id INTO v_category_id;
     END IF;
   ELSE
     IF NOT EXISTS (SELECT 1 FROM product_categories WHERE id=v_category_id) THEN RAISE EXCEPTION 'Kategori produk tidak valid'; END IF;
   END IF;
-  v_result := public.save_product(p_product_id,v_category_id,p_sku,p_barcode,p_name,p_description,p_base_unit,p_default_cost_price,p_is_active);
-  v_product_id := (v_result->>'product_id')::uuid;
-  PERFORM public.save_product_outlet(v_product_id,p_outlet_id,p_selling_price,p_is_active);
+  IF p_product_id IS NULL THEN
+    INSERT INTO public.products (
+      category_id, sku, barcode, name, description, base_unit, default_cost_price, is_active
+    ) VALUES (
+      v_category_id, p_sku, p_barcode, p_name, p_description, p_base_unit, p_default_cost_price, p_is_active
+    ) RETURNING id INTO v_product_id;
+  ELSE
+    UPDATE public.products
+    SET category_id = v_category_id,
+        sku = p_sku,
+        barcode = p_barcode,
+        name = p_name,
+        description = p_description,
+        base_unit = p_base_unit,
+        default_cost_price = p_default_cost_price,
+        is_active = p_is_active,
+        updated_at = clock_timestamp()
+    WHERE id = p_product_id
+    RETURNING id INTO v_product_id;
+    IF v_product_id IS NULL THEN RAISE EXCEPTION 'Produk tidak ditemukan'; END IF;
+  END IF;
+  INSERT INTO public.product_outlets (product_id, outlet_id, selling_price, is_active)
+  VALUES (v_product_id, p_outlet_id, p_selling_price, p_is_active)
+  ON CONFLICT (product_id, outlet_id) DO UPDATE
+  SET selling_price = EXCLUDED.selling_price, is_active = EXCLUDED.is_active;
   RETURN jsonb_build_object('success',true,'product_id',v_product_id,'category_id',v_category_id);
 END;
 $$;
@@ -106,8 +151,10 @@ BEGIN
   SELECT id,category_id,code,name,description,duration_minutes,default_cost_price INTO v_service FROM services WHERE id=p_service_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Layanan tidak ditemukan'; END IF;
   SELECT selling_price INTO v_price FROM service_outlets WHERE service_id=p_service_id AND outlet_id=p_outlet_id;
-  PERFORM public.save_service(v_service.id,v_service.category_id,v_service.code,v_service.name,v_service.description,v_service.duration_minutes,COALESCE(v_service.default_cost_price,0),false);
-  PERFORM public.save_service_outlet(p_service_id,p_outlet_id,COALESCE(v_price,0),false);
+  UPDATE public.services SET is_active = FALSE, updated_at = clock_timestamp() WHERE id = p_service_id;
+  INSERT INTO public.service_outlets (service_id, outlet_id, selling_price, is_active)
+  VALUES (p_service_id, p_outlet_id, COALESCE(v_price, 0), FALSE)
+  ON CONFLICT (service_id, outlet_id) DO UPDATE SET is_active = FALSE;
   RETURN jsonb_build_object('success',true,'service_id',p_service_id,'outlet_id',p_outlet_id,'is_active',false);
 END;
 $$;
@@ -124,8 +171,10 @@ BEGIN
   SELECT id,category_id,sku,barcode,name,description,base_unit,default_cost_price INTO v_product FROM products WHERE id=p_product_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Produk tidak ditemukan'; END IF;
   SELECT selling_price INTO v_price FROM product_outlets WHERE product_id=p_product_id AND outlet_id=p_outlet_id;
-  PERFORM public.save_product(v_product.id,v_product.category_id,v_product.sku,v_product.barcode,v_product.name,v_product.description,v_product.base_unit,COALESCE(v_product.default_cost_price,0),false);
-  PERFORM public.save_product_outlet(p_product_id,p_outlet_id,COALESCE(v_price,0),false);
+  UPDATE public.products SET is_active = FALSE, updated_at = clock_timestamp() WHERE id = p_product_id;
+  INSERT INTO public.product_outlets (product_id, outlet_id, selling_price, is_active)
+  VALUES (p_product_id, p_outlet_id, COALESCE(v_price, 0), FALSE)
+  ON CONFLICT (product_id, outlet_id) DO UPDATE SET is_active = FALSE;
   RETURN jsonb_build_object('success',true,'product_id',p_product_id,'outlet_id',p_outlet_id,'is_active',false);
 END;
 $$;

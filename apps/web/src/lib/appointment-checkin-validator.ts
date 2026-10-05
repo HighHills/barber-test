@@ -112,7 +112,7 @@ export function validateCheckInResponse(
       error: 'Status antrean dari server tidak valid (harus WAITING).',
     };
   }
-  const status: 'WAITING' = 'WAITING';
+  const status = 'WAITING' as const;
 
   // appointment_id: required, authoritative only, non-empty string, must match requested appointment
   const rawApptId = record.appointment_id;

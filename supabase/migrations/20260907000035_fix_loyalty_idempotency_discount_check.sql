@@ -17,8 +17,7 @@ BEGIN
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
     AND p.proname = 'process_pos_sale_with_loyalty'
-    AND pg_get_function_identity_arguments(p.oid) =
-      'uuid, character varying, uuid, uuid, uuid, jsonb, jsonb, numeric, text, integer';
+    AND p.pronargs = 10;
 
   IF v_function_oid IS NULL THEN
     RAISE EXCEPTION 'Migration 35: process_pos_sale_with_loyalty function not found';

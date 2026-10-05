@@ -23,8 +23,7 @@ BEGIN
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
     AND p.proname = 'process_pos_sale_with_loyalty'
-    AND pg_get_function_identity_arguments(p.oid) =
-      'uuid, character varying, uuid, uuid, uuid, jsonb, jsonb, numeric, text, integer';
+    AND p.pronargs = 10;
 
   IF v_function_oid IS NULL THEN
     RAISE EXCEPTION 'Migration 36: process_pos_sale_with_loyalty function not found';
@@ -32,7 +31,7 @@ BEGIN
 
   v_definition := pg_get_functiondef(v_function_oid);
 
-  IF position(v_injection IN v_definition) = 0 THEN
+  IF position('v_total_discount := v_discount_amount + v_loyalty_discount;' IN v_definition) = 0 THEN
     IF position(v_marker IN v_definition) = 0 THEN
       RAISE EXCEPTION 'Migration 36: idempotency guard marker not found';
     END IF;

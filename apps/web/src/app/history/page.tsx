@@ -8,6 +8,7 @@ import { PosHeader } from '../../components/pos/pos-header';
 import { ReceiptModal } from '../../components/pos/receipt-modal';
 import { VoidSaleModal } from '../../components/pos/void-sale-modal';
 import { RefundSaleModal } from '../../components/pos/refund-sale-modal';
+import { mapPosHistoryError } from '../../lib/pos-operation-errors';
 import {
   History,
   Search,
@@ -23,12 +24,72 @@ import {
   X,
 } from 'lucide-react';
 
+type HistoryTier = { name: string | null };
+type HistoryCustomer = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  current_loyalty_points: number | null;
+  customer_tiers: HistoryTier | HistoryTier[] | null;
+};
+type HistoryProfile = { display_name: string | null };
+type HistorySaleItem = {
+  id: string;
+  description_snapshot: string | null;
+  quantity: number | string | null;
+  unit_price: number | string | null;
+  total_amount: number | string | null;
+  item_type: string;
+  employees: { full_name: string | null } | null;
+};
+type HistoryPayment = {
+  amount: number | string | null;
+  reference_number: string | null;
+  payment_methods: { name: string | null } | null;
+};
+type HistoryRefundItem = { sale_item_id: string; quantity: number | string | null };
+type HistoryRefund = {
+  id: string;
+  refund_number: string | null;
+  refund_type: string | null;
+  total_amount: number | string | null;
+  status: string;
+  reason: string | null;
+  refunded_at: string | null;
+  profiles: HistoryProfile | null;
+  sale_refund_items: HistoryRefundItem[] | null;
+};
+type HistorySale = {
+  id: string;
+  invoice_number: string;
+  outlet_id: string;
+  subtotal: number | string | null;
+  discount_amount: number | string | null;
+  tax_amount: number | string | null;
+  total_amount: number | string | null;
+  status: string;
+  sold_at: string;
+  customer_id: string | null;
+  customers: HistoryCustomer | null;
+  profiles: HistoryProfile | null;
+  sale_items: HistorySaleItem[] | null;
+  sale_payments: HistoryPayment[] | null;
+  sale_refunds: HistoryRefund[] | null;
+};
+type HistoryVoidTarget = {
+  id: string;
+  invoice_number: string;
+  sold_at: string;
+  total_amount: number;
+  cashier_name?: string;
+};
+
 function SalesHistoryContent(): React.JSX.Element {
   const { supabase, currentOutlet } = usePos();
 
   const PAGE_SIZE = 50;
 
-  const [sales, setSales] = useState<any[]>([]);
+  const [sales, setSales] = useState<HistorySale[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(false);
@@ -36,8 +97,8 @@ function SalesHistoryContent(): React.JSX.Element {
 
   // Modals & actions
   const [reprintSale, setReprintSale] = useState<CompletedSale | null>(null);
-  const [voidSaleTarget, setVoidSaleTarget] = useState<any | null>(null);
-  const [refundSaleTarget, setRefundSaleTarget] = useState<any | null>(null);
+  const [voidSaleTarget, setVoidSaleTarget] = useState<HistoryVoidTarget | null>(null);
+  const [refundSaleTarget, setRefundSaleTarget] = useState<HistorySale | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
 
   // Success/error notification banner
@@ -131,7 +192,7 @@ function SalesHistoryContent(): React.JSX.Element {
         .range(offset, offset + PAGE_SIZE - 1);
 
       if (error) throw error;
-      const rows = data || [];
+      const rows = (data || []) as unknown as HistorySale[];
       if (reset) {
         setSales(rows);
       } else {
@@ -140,6 +201,11 @@ function SalesHistoryContent(): React.JSX.Element {
       setHasMore(rows.length === PAGE_SIZE);
     } catch (err) {
       console.error('Error fetching sales history:', err);
+      if (reset) {
+        setSales([]);
+        setHasMore(false);
+      }
+      setFeedback({ type: 'error', message: mapPosHistoryError(err) });
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -163,7 +229,7 @@ function SalesHistoryContent(): React.JSX.Element {
     );
   });
 
-  const handleOpenReprint = (saleData: any) => {
+  const handleOpenReprint = (saleData: HistorySale) => {
     const custObj = saleData.customers;
     const tierObj = Array.isArray(custObj?.customer_tiers)
       ? custObj?.customer_tiers[0]
@@ -185,15 +251,15 @@ function SalesHistoryContent(): React.JSX.Element {
       discount_amount: Number(saleData.discount_amount) || 0,
       tax_amount: Number(saleData.tax_amount) || 0,
       total_amount: Number(saleData.total_amount) || 0,
-      items: (saleData.sale_items || []).map((i: any) => ({
-        description: i.description_snapshot,
+      items: (saleData.sale_items || []).map((i) => ({
+        description: i.description_snapshot || 'Item',
         quantity: Number(i.quantity) || 1,
         unit_price: Number(i.unit_price) || 0,
         total_amount: Number(i.total_amount) || 0,
         item_type: i.item_type,
-        barber_name: i.employees?.full_name,
+        barber_name: i.employees?.full_name || undefined,
       })),
-      payments: (saleData.sale_payments || []).map((p: any) => ({
+      payments: (saleData.sale_payments || []).map((p) => ({
         method_name: p.payment_methods?.name || 'Pembayaran',
         amount: Number(p.amount) || 0,
         reference_number: p.reference_number || undefined,
@@ -338,10 +404,10 @@ function SalesHistoryContent(): React.JSX.Element {
                     const isVoided = sale.status === 'VOIDED';
 
                     const completedRefunds = (sale.sale_refunds || []).filter(
-                      (r: any) => r.status === 'COMPLETED'
+                      (r) => r.status === 'COMPLETED'
                     );
                     const totalRefundedAmount = completedRefunds.reduce(
-                      (sum: number, r: any) => sum + Number(r.total_amount || 0),
+                      (sum, r) => sum + Number(r.total_amount || 0),
                       0
                     );
 
@@ -436,7 +502,6 @@ function SalesHistoryContent(): React.JSX.Element {
                                       invoice_number: sale.invoice_number,
                                       sold_at: sale.sold_at,
                                       total_amount: Number(sale.total_amount),
-                                      cashier_name: sale.profiles?.display_name,
                                     })
                                   }
                                   className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:text-red-900 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
@@ -460,7 +525,7 @@ function SalesHistoryContent(): React.JSX.Element {
                                   <span>Riwayat Dokumen Pengembalian Dana (Refund)</span>
                                 </div>
                                 <div className="space-y-2">
-                                  {completedRefunds.map((ref: any) => (
+                                  {completedRefunds.map((ref) => (
                                     <div
                                       key={ref.id}
                                       className="bg-white border border-amber-200 rounded-xl p-3 text-[11px] space-y-1 shadow-2xs"
@@ -476,7 +541,7 @@ function SalesHistoryContent(): React.JSX.Element {
                                       <div className="text-slate-500 flex items-center justify-between">
                                         <span>
                                           Diproses oleh: {ref.profiles?.display_name || 'Kasir'} •{' '}
-                                          {formatDateTime(ref.refunded_at)}
+                                          {formatDateTime(ref.refunded_at || undefined)}
                                         </span>
                                         <span className="italic text-slate-600">
                                           Alasan: &ldquo;{ref.reason}&rdquo;
@@ -488,9 +553,9 @@ function SalesHistoryContent(): React.JSX.Element {
                                             Item dikembalikan:
                                           </span>{' '}
                                           {ref.sale_refund_items
-                                            .map((ri: any) => {
+                                            .map((ri) => {
                                               const orig = (sale.sale_items || []).find(
-                                                (si: any) => si.id === ri.sale_item_id
+                                                (si) => si.id === ri.sale_item_id
                                               );
                                               return `${orig?.description_snapshot || 'Item'} (${ri.quantity}x)`;
                                             })

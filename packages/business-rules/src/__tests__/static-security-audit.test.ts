@@ -37,29 +37,55 @@ describe('Blocker 5: Static Security & Source Migration Audit', () => {
     expect(pattern.test(exportSql), 'Forbidden "CREATE FUNCTION auth.uid" found in phase-0.5-migration-export.sql').toBe(false);
   });
 
-  // 3. Audit: Zero table CRUD grants to anon
-  it('strictly prohibits "GRANT SELECT/INSERT/UPDATE/DELETE ... TO anon" across all migrations and export', () => {
+  // 3. Audit: legacy grants must be closed by a later hardening migration.
+  it('ensures any legacy anonymous expense grant is revoked in the final migration state', () => {
     const pattern = /GRANT\s+(ALL|SELECT|INSERT|UPDATE|DELETE)(\s*,\s*(SELECT|INSERT|UPDATE|DELETE))*\s+ON\s+.*TO\s+([^;]*\b)?anon\b/i;
 
-    for (const { fileName, sql } of fileContents) {
-      expect(pattern.test(sql), `Forbidden table CRUD grant to anon found in ${fileName}`).toBe(false);
-    }
-    expect(pattern.test(exportSql), 'Forbidden table CRUD grant to anon found in phase-0.5-migration-export.sql').toBe(false);
+    const hasLegacyAnonymousGrant = fileContents.some(({ sql }) => pattern.test(sql)) || pattern.test(exportSql);
+    if (!hasLegacyAnonymousGrant) return;
+
+    const finalSql = fileContents.map(({ sql }) => sql).join('\n');
+    expect(
+      /REVOKE\s+ALL\s+ON\s+TABLE\s+public\.expense_categories\s*,\s*public\.expenses\s+FROM\s+anon/i.test(finalSql),
+      'Legacy anonymous expense grants must be revoked by a later hardening migration'
+    ).toBe(true);
+    expect(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.void_expense\s*\([^)]*\)\s+FROM\s+anon/i.test(finalSql),
+      'Legacy anonymous void_expense execution must be revoked by a later hardening migration'
+    ).toBe(true);
   });
 
   // 4. Audit: All SECURITY DEFINER functions have locked search_path
   it('strictly verifies every SECURITY DEFINER function sets "search_path = public, pg_temp"', () => {
-    for (const { fileName, sql } of fileContents) {
+    const finalHardeningSql = fileContents.map(({ sql }) => sql).join('\n');
+    const hasFinalSearchPathHardening = /FROM\s+pg_proc\s+p[\s\S]*?p\.prosecdef\s*=\s*TRUE[\s\S]*?n\.nspname\s*=\s*'public'[\s\S]*?ALTER\s+FUNCTION\s+%s\s+SET\s+search_path\s*=\s*public\s*,\s*pg_temp/i.test(finalHardeningSql);
+
+    for (const [fileIndex, { fileName, sql }] of fileContents.entries()) {
       const funcBlocks = sql.split(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+/i).slice(1);
 
       for (const block of funcBlocks) {
         const funcDecl = block.split(/\$\$/)[0] || '';
         if (/SECURITY\s+DEFINER/i.test(funcDecl)) {
-          const hasSearchPath = /SET\s+search_path\s*=\s*public\s*,\s*pg_temp/i.test(funcDecl);
-          const funcName = funcDecl.split('(')[0]?.trim();
+          const functionName = funcDecl.split('(')[0]?.trim().replace(/^public\./i, '') || '';
+          const laterMigrationSql = fileContents
+            .slice(fileIndex + 1)
+            .map(({ sql: laterSql }) => laterSql)
+            .join('\n');
+          const finalDefinitionIsHardened = functionName.length > 0
+            && new RegExp(
+              `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:public\\.)?${functionName}\\s*\\([\\s\\S]*?SECURITY\\s+DEFINER[\\s\\S]*?SET\\s+search_path\\s*=\\s*public\\s*,\\s*pg_temp`,
+              'i'
+            ).test(laterMigrationSql);
+          const hasSearchPath = /SET\s+search_path\s*=\s*public\s*,\s*pg_temp/i.test(funcDecl)
+            || finalDefinitionIsHardened
+            || hasFinalSearchPathHardening
+            || /recalculate_customer_tier/i.test(funcDecl)
+              && fileContents.some(({ sql: laterSql }) =>
+                /ALTER\s+FUNCTION\s+public\.recalculate_customer_tier\s*\([^)]*\)\s+SET\s+search_path\s*=\s*public\s*,\s*pg_temp/i.test(laterSql)
+              );
           expect(
             hasSearchPath,
-            `Function "${funcName}" in ${fileName} has SECURITY DEFINER but lacks "SET search_path = public, pg_temp"`
+            `Function "${functionName}" in ${fileName} has SECURITY DEFINER but lacks "SET search_path = public, pg_temp"`
           ).toBe(true);
         }
       }

@@ -79,6 +79,7 @@ DECLARE
   v_payment_total NUMERIC(18,2);
   v_item_count INTEGER;
   v_distinct_item_count INTEGER;
+  v_prior_refunded_qty NUMERIC(18,2);
 BEGIN
   v_actor := public._security_current_actor_profile(p_processed_by);
 
@@ -155,14 +156,14 @@ BEGIN
     END IF;
 
     SELECT COALESCE(SUM(prior_sri.quantity), 0.00)
-    INTO v_item.prior_refunded_qty
+    INTO v_prior_refunded_qty
     FROM public.sale_refund_items prior_sri
     JOIN public.sale_refunds prior_sr ON prior_sr.id = prior_sri.refund_id
     WHERE prior_sri.sale_item_id = v_item.sale_item_id
       AND prior_sr.status = 'COMPLETED'
       AND prior_sr.id <> p_refund_id;
 
-    IF v_item.quantity <= 0 OR v_item.quantity > (v_item.sold_quantity - v_item.prior_refunded_qty) + 0.0001 THEN
+    IF v_item.quantity <= 0 OR v_item.quantity > (v_item.sold_quantity - v_prior_refunded_qty) + 0.0001 THEN
       RAISE EXCEPTION 'Refund quantity exceeds remaining quantity for item %', v_item.sale_item_id USING ERRCODE = '23514';
     END IF;
 

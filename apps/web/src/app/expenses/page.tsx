@@ -30,6 +30,42 @@ import {
   TrendingDown,
 } from 'lucide-react';
 
+type ExpenseRelation = {
+  id: string;
+  code?: string | null;
+  name?: string | null;
+  account_code?: string | null;
+  account_name?: string | null;
+  icon?: string | null;
+  display_name?: string | null;
+} | null;
+
+type ExpenseQueryRow = {
+  id: string;
+  expense_number: string;
+  outlet_id: string;
+  category_id: string;
+  financial_account_id: string;
+  payment_account_id: string;
+  amount: number | string | null;
+  expense_date: string;
+  recipient: string | null;
+  notes: string | null;
+  reference_number: string | null;
+  created_by: string | null;
+  created_at: string;
+  outlets: ExpenseRelation;
+  expense_categories: ExpenseRelation;
+  fin_account: ExpenseRelation;
+  pay_account: ExpenseRelation;
+  profiles: ExpenseRelation;
+};
+
+type JournalNumberRow = {
+  reference_id: string;
+  journal_number: string;
+};
+
 function ExpensesContent(): React.JSX.Element {
   const { supabase, availableOutlets, currentOutlet, profile, isCashier, isOwner } = usePos();
 
@@ -104,8 +140,9 @@ function ExpensesContent(): React.JSX.Element {
       if (error) throw error;
 
       // Also query corresponding journal numbers
-      const expenseIds = (data || []).map((e: any) => e.id);
-      let journalMap: Record<string, string> = {};
+      const expenseRows = (data || []) as unknown as ExpenseQueryRow[];
+      const expenseIds = expenseRows.map((expense) => expense.id);
+      const journalMap: Record<string, string> = {};
 
       if (expenseIds.length > 0) {
         const { data: jData } = await supabase
@@ -115,13 +152,13 @@ function ExpensesContent(): React.JSX.Element {
           .in('reference_id', expenseIds);
 
         if (jData) {
-          jData.forEach((j: any) => {
-            journalMap[j.reference_id] = j.journal_number;
+          (jData as unknown as JournalNumberRow[]).forEach((journal) => {
+            journalMap[journal.reference_id] = journal.journal_number;
           });
         }
       }
 
-      const mapped: ExpenseItem[] = (data || []).map((item: any) => ({
+      const mapped: ExpenseItem[] = expenseRows.map((item) => ({
         id: item.id,
         expense_number: item.expense_number,
         outlet_id: item.outlet_id,
@@ -148,7 +185,7 @@ function ExpensesContent(): React.JSX.Element {
       }));
 
       setExpenses(mapped);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading expenses:', err);
       setErrorMsg(mapExpenseOperationError(err, 'load'));
     } finally {
@@ -185,7 +222,6 @@ function ExpensesContent(): React.JSX.Element {
 
       if (error) throw error;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as { success?: boolean; expense_id?: string; message?: string } | null;
       if (!res || res.success !== true || res.expense_id !== exp.id) {
         throw new Error(res?.message || 'Respons pembatalan biaya dari server tidak valid.');
@@ -193,7 +229,7 @@ function ExpensesContent(): React.JSX.Element {
 
       setSuccessMsg(`Pengeluaran ${exp.expense_number} berhasil dibatalkan dan jurnal telah dibalik.`);
       await loadExpenses();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error voiding expense:', err);
       setErrorMsg(mapExpenseOperationError(err, 'void'));
     } finally {

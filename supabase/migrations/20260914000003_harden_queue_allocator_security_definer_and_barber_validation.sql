@@ -45,7 +45,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_timezone := pg_catalog.coalesce(v_timezone, 'Asia/Jakarta');
+  v_timezone := COALESCE(v_timezone, 'Asia/Jakarta');
 
   -- 2. Determine business date and start of day for this outlet
   business_date := (pg_catalog.clock_timestamp() AT TIME ZONE v_timezone)::pg_catalog.date;

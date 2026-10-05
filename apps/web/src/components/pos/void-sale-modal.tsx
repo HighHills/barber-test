@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePos } from '../../context/pos-context';
 import { formatCurrency, formatDateTime } from '../../lib/formatters';
 import type { VoidSaleResult } from '../../types/pos';
+import { mapPosOperationError } from '../../lib/pos-operation-errors';
 import { AlertTriangle, X, Loader2, Ban } from 'lucide-react';
 
 interface VoidSaleModalProps {
@@ -67,7 +68,7 @@ export function VoidSaleModal({
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw error;
       }
 
       const result = data as VoidSaleResult;
@@ -75,11 +76,7 @@ export function VoidSaleModal({
       onClose();
     } catch (err: unknown) {
       console.error('Void sale error:', err);
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Terjadi kesalahan saat membatalkan transaksi.'
-      );
+      setErrorMsg(mapPosOperationError(err));
     } finally {
       setIsSubmitting(false);
     }

@@ -50,7 +50,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_timezone := pg_catalog.coalesce(v_timezone, 'Asia/Jakarta');
+  v_timezone := COALESCE(v_timezone, 'Asia/Jakarta');
 
   -- 2. Determine business date and start of day for this outlet
   business_date := (pg_catalog.clock_timestamp() AT TIME ZONE v_timezone)::pg_catalog.date;
@@ -63,7 +63,7 @@ BEGIN
   );
 
   -- 4. Calculate next sequential queue number
-  SELECT pg_catalog.coalesce(pg_catalog.max(q.queue_number), 0) + 1
+  SELECT COALESCE(pg_catalog.max(q.queue_number), 0) + 1
   INTO allocated_number
   FROM public.queues q
   WHERE q.outlet_id = p_outlet_id
@@ -295,7 +295,7 @@ BEGIN
   END IF;
 
   -- 5. Barber resolution & validation
-  v_effective_barber_id := pg_catalog.coalesce(p_barber_id, v_apt.barber_id);
+  v_effective_barber_id := COALESCE(p_barber_id, v_apt.barber_id);
   IF v_effective_barber_id IS NOT NULL THEN
     SELECT e.id, e.full_name, e.position, e.is_active
     INTO v_barber

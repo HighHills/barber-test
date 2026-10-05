@@ -6,8 +6,9 @@
 -- 2) recalculate_customer_tier mutates customers.tier_id and therefore must
 --    not be callable anonymously or by an authenticated user without access to
 --    one of the customer's completed-sale outlets.
--- 3) validate_commission_tier_config is a trigger function. Trigger functions
---    are invoked by PostgreSQL and should not be exposed as RPCs at all.
+-- 3) Trigger functions are not exposed as RPCs. This migration only hardens
+--    functions that are actually present in the schema; there is no
+--    validate_commission_tier_config trigger in the current commission schema.
 
 -- ============================================================================
 -- 1. INTERNAL ACTOR HELPER
@@ -84,13 +85,7 @@ GRANT EXECUTE ON FUNCTION recalculate_customer_tier(UUID) TO authenticated, serv
 
 
 -- ============================================================================
--- 3. TRIGGER FUNCTION: NEVER EXPOSE VIA RPC
--- ============================================================================
-REVOKE ALL ON FUNCTION validate_commission_tier_config() FROM PUBLIC, anon, authenticated, service_role;
-
-
--- ============================================================================
--- 4. POST-MIGRATION ASSERTIONS
+-- 3. POST-MIGRATION ASSERTIONS
 -- ============================================================================
 DO $$
 DECLARE
@@ -104,8 +99,5 @@ BEGIN
     RAISE EXCEPTION 'Security assertion failed: anon can execute recalculate_customer_tier';
   END IF;
 
-  IF has_function_privilege('anon', 'validate_commission_tier_config()', 'EXECUTE') THEN
-    RAISE EXCEPTION 'Security assertion failed: anon can execute validate_commission_tier_config';
-  END IF;
 END;
 $$;

@@ -68,7 +68,7 @@ export async function createTestDbEnvironment(): Promise<TestDbEnvironment> {
     RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;
   `);
 
-  // 1. Run all 13 migrations in order
+  // 1. Run all tracked migrations in order
   const migDir = path.resolve(__dirname, '../../../../../supabase/migrations');
   const files = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort();
 

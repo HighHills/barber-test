@@ -18,6 +18,7 @@ import { PeakHoursHeatmap } from '../../components/analytics/peak-hours-heatmap'
 import { BarberProductivityRank } from '../../components/analytics/barber-productivity-rank';
 import { TopServicesProducts } from '../../components/analytics/top-services-products';
 import { RoleGuard } from '../../components/auth/role-guard';
+import { mapAnalyticsOperationError } from '../../lib/analytics-operation-errors';
 import {
   Store,
   RefreshCw,
@@ -28,6 +29,31 @@ import {
 
 type PeriodFilter = 'TODAY' | '7D' | '30D' | 'THIS_MONTH';
 
+type AnalyticsCatalogRelation = { id: string; name: string } | null;
+type AnalyticsSaleItem = {
+  id: string;
+  item_type: 'SERVICE' | 'PRODUCT' | string;
+  service_id: string | null;
+  product_id: string | null;
+  barber_id: string | null;
+  quantity: number | string | null;
+  cost_price: number | string | null;
+  total_amount: number | string | null;
+  services: AnalyticsCatalogRelation;
+  products: AnalyticsCatalogRelation;
+};
+type AnalyticsSale = {
+  id: string;
+  outlet_id: string;
+  customer_id: string | null;
+  total_amount: number | string | null;
+  created_at: string;
+  sale_items: AnalyticsSaleItem[] | null;
+  customers: { id: string; created_at: string | null } | null;
+};
+type AnalyticsQueue = { id: string; outlet_id: string; started_at: string | null };
+type AnalyticsEmployee = { id: string; full_name: string; position: string | null };
+
 function AnalyticsContent(): React.JSX.Element {
   const { supabase, availableOutlets } = usePos();
 
@@ -36,11 +62,12 @@ function AnalyticsContent(): React.JSX.Element {
   const [period, setPeriod] = useState<PeriodFilter>('7D');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Raw fetched data
-  const [salesData, setSalesData] = useState<any[]>([]);
-  const [queueData, setQueueData] = useState<any[]>([]);
-  const [employeesData, setEmployeesData] = useState<any[]>([]);
+  const [salesData, setSalesData] = useState<AnalyticsSale[]>([]);
+  const [queueData, setQueueData] = useState<AnalyticsQueue[]>([]);
+  const [employeesData, setEmployeesData] = useState<AnalyticsEmployee[]>([]);
 
   // Compute start date based on period filter
   const dateRange = useMemo(() => {
@@ -50,9 +77,9 @@ function AnalyticsContent(): React.JSX.Element {
     if (period === 'TODAY') {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     } else if (period === '7D') {
-      startDate.setDate(now.getDate() - 7);
+      startDate.setDate(now.getDate() - 6);
     } else if (period === '30D') {
-      startDate.setDate(now.getDate() - 30);
+      startDate.setDate(now.getDate() - 29);
     } else if (period === 'THIS_MONTH') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
     }
@@ -69,6 +96,11 @@ function AnalyticsContent(): React.JSX.Element {
   const loadAnalyticsData = useCallback(async () => {
     try {
       setIsRefreshing(true);
+      setErrorMessage(null);
+      const accessibleOutletIds = availableOutlets.map((outlet) => outlet.id);
+      if (selectedOutletId !== 'ALL' && !accessibleOutletIds.includes(selectedOutletId)) {
+        throw new Error('ANALYTICS_OUTLET_SCOPE_INVALID');
+      }
 
       // 1. Fetch Sales with Sale Items & Customer Info
       let salesQuery = supabase
@@ -104,24 +136,31 @@ function AnalyticsContent(): React.JSX.Element {
         `)
         .eq('status', 'COMPLETED')
         .gte('created_at', dateRange.startIso)
+        .lte('created_at', dateRange.endIso)
         .order('created_at', { ascending: true });
 
       if (selectedOutletId !== 'ALL') {
         salesQuery = salesQuery.eq('outlet_id', selectedOutletId);
+      } else if (accessibleOutletIds.length > 0) {
+        salesQuery = salesQuery.in('outlet_id', accessibleOutletIds);
       }
 
       // 2. Fetch Queues for Peak Hours
       let queuesQuery = supabase
         .from('queues')
         .select('id, outlet_id, started_at, completed_at, status')
-        .not('started_at', 'is', null);
+        .not('started_at', 'is', null)
+        .gte('started_at', dateRange.startIso)
+        .lte('started_at', dateRange.endIso);
 
       if (selectedOutletId !== 'ALL') {
         queuesQuery = queuesQuery.eq('outlet_id', selectedOutletId);
+      } else if (accessibleOutletIds.length > 0) {
+        queuesQuery = queuesQuery.in('outlet_id', accessibleOutletIds);
       }
 
       // 3. Fetch Employees / Barbers
-      let empQuery = supabase.from('employees').select('id, full_name, position').eq('is_active', true);
+      const empQuery = supabase.from('employees').select('id, full_name, position').eq('is_active', true);
 
       const [salesRes, queuesRes, empRes] = await Promise.all([
         salesQuery,
@@ -129,20 +168,26 @@ function AnalyticsContent(): React.JSX.Element {
         empQuery,
       ]);
 
-      if (salesRes.error) console.error('Sales fetch error:', salesRes.error.message || salesRes.error);
-      if (queuesRes.error) console.error('Queues fetch error:', queuesRes.error.message || queuesRes.error);
-      if (empRes.error) console.error('Employees fetch error:', empRes.error.message || empRes.error);
+      if (salesRes.error) throw salesRes.error;
+      if (queuesRes.error) throw queuesRes.error;
+      if (empRes.error) throw empRes.error;
 
-      setSalesData(salesRes.data || []);
-      setQueueData(queuesRes.data || []);
-      setEmployeesData(empRes.data || []);
-    } catch (err) {
+      // Supabase infers joined one-to-many relations as arrays. The screen normalizes
+      // those values below, so keep the boundary explicit rather than widening UI data to `any`.
+      setSalesData((salesRes.data || []) as unknown as AnalyticsSale[]);
+      setQueueData((queuesRes.data || []) as unknown as AnalyticsQueue[]);
+      setEmployeesData((empRes.data || []) as unknown as AnalyticsEmployee[]);
+    } catch (err: unknown) {
       console.error('Error loading analytics:', err);
+      setSalesData([]);
+      setQueueData([]);
+      setEmployeesData([]);
+      setErrorMessage(mapAnalyticsOperationError(err));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [supabase, selectedOutletId, dateRange]);
+  }, [supabase, selectedOutletId, dateRange, availableOutlets]);
 
   useEffect(() => {
     loadAnalyticsData();
@@ -174,7 +219,7 @@ function AnalyticsContent(): React.JSX.Element {
         }
       }
 
-      (s.sale_items || []).forEach((item: any) => {
+      (s.sale_items || []).forEach((item) => {
         const itemSubtotal = Number(item.total_amount) || 0;
         const itemCost = (Number(item.cost_price) || 0) * (Number(item.quantity) || 1);
         estCost += itemCost;
@@ -194,7 +239,7 @@ function AnalyticsContent(): React.JSX.Element {
     const retentionRate =
       newCount + returningCount > 0
         ? Math.round((returningCount / (newCount + returningCount)) * 100)
-        : 85;
+        : 0;
 
     return {
       totalRevenue: totalRev,
@@ -236,7 +281,7 @@ function AnalyticsContent(): React.JSX.Element {
       entry.total += Number(s.total_amount) || 0;
       entry.count += 1;
 
-      (s.sale_items || []).forEach((item: any) => {
+      (s.sale_items || []).forEach((item) => {
         const itemSubtotal = Number(item.total_amount) || 0;
         if (item.item_type === 'SERVICE') entry.service += itemSubtotal;
         else if (item.item_type === 'PRODUCT') entry.product += itemSubtotal;
@@ -272,7 +317,7 @@ function AnalyticsContent(): React.JSX.Element {
 
       outletSales.forEach((s) => {
         rev += Number(s.total_amount) || 0;
-        (s.sale_items || []).forEach((item: any) => {
+        (s.sale_items || []).forEach((item) => {
           const val = Number(item.total_amount) || 0;
           if (item.item_type === 'SERVICE') sRev += val;
           else if (item.item_type === 'PRODUCT') pRev += val;
@@ -360,7 +405,7 @@ function AnalyticsContent(): React.JSX.Element {
     });
 
     salesData.forEach((s) => {
-      (s.sale_items || []).forEach((item: any) => {
+      (s.sale_items || []).forEach((item) => {
         if (!item.barber_id || !barberMap.has(item.barber_id)) return;
         const b = barberMap.get(item.barber_id)!;
         b.guests.add(s.id);
@@ -405,7 +450,7 @@ function AnalyticsContent(): React.JSX.Element {
     let totalProductRev = 0;
 
     salesData.forEach((s) => {
-      (s.sale_items || []).forEach((item: any) => {
+      (s.sale_items || []).forEach((item) => {
         const qty = Number(item.quantity) || 1;
         const rev = Number(item.total_amount) || 0;
 
@@ -652,6 +697,10 @@ function AnalyticsContent(): React.JSX.Element {
             <p className="text-sm font-semibold text-slate-700">
               Mengompilasi Metrik & Agregasi Analitik Multi-Cabang...
             </p>
+          </div>
+        ) : errorMessage ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+            {errorMessage}
           </div>
         ) : (
           <>

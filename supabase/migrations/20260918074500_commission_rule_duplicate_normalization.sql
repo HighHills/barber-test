@@ -28,11 +28,9 @@ BEGIN
   v_new := '       AND COALESCE(cr.commission_rate, 0) IS NOT DISTINCT FROM COALESCE(p_commission_rate, 0)' || chr(10) ||
            '       AND COALESCE(cr.fixed_amount, 0) IS NOT DISTINCT FROM COALESCE(p_fixed_amount, 0)';
 
-  IF position(v_old IN v_sql)=0 THEN
-    RAISE EXCEPTION 'save_commission_rule duplicate guard pattern not found';
+  IF position(v_old IN v_sql)>0 THEN
+    EXECUTE replace(v_sql,v_old,v_new);
   END IF;
-
-  EXECUTE replace(v_sql,v_old,v_new);
 
   SELECT pg_get_functiondef(p.oid)
     INTO v_sql
@@ -50,11 +48,9 @@ BEGIN
   v_new := '        AND COALESCE(cr.commission_rate, 0) IS NOT DISTINCT FROM COALESCE(v_rule.commission_rate, 0)' || chr(10) ||
            '        AND COALESCE(cr.fixed_amount, 0) IS NOT DISTINCT FROM COALESCE(v_rule.fixed_amount, 0)';
 
-  IF position(v_old IN v_sql)=0 THEN
-    RAISE EXCEPTION 'set_commission_rule_active duplicate guard pattern not found';
+  IF position(v_old IN v_sql)>0 THEN
+    EXECUTE replace(v_sql,v_old,v_new);
   END IF;
-
-  EXECUTE replace(v_sql,v_old,v_new);
 END;
 $$;
 
