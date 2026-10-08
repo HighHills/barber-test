@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260918045632_journal_write_boundary_hardening_fix_sql", "label": "20260918045632_journal_write_boundary_hardening_fix.sql", "file_type": "code", "source_file": "supabase/migrations/20260918045632_journal_write_boundary_hardening_fix.sql", "source_location": null}], "edges": []}

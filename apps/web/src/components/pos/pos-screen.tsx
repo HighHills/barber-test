@@ -257,7 +257,7 @@ export function PosScreen(): React.JSX.Element {
           <div className="flex items-center gap-2">
             <span className="font-bold">⚠️ Data Master Cabang / Outlet Belum Terdaftar:</span>
             <span>
-              Database Supabase Anda belum memiliki data Cabang (Outlet) atau akun login Anda belum memiliki peran OWNER. Jalankan skrip <strong>supabase/seed_operational_data.sql</strong> di Supabase SQL Editor.
+              Belum ada cabang aktif yang dapat diakses akun ini. Jika ini instalasi baru, masuk sebagai Owner lalu buat cabang melalui Pengaturan &amp; Bisnis. Jika cabang sudah ada, minta administrator memeriksa peran dan akses cabang akun Anda.
             </span>
           </div>
           <button

@@ -166,10 +166,4 @@ BEGIN
   END IF;
 END $$;
 
--- 6. Initial Business Settings (Singleton)
-INSERT INTO business_settings (
-  business_name, legal_name, phone, email, currency, timezone, tax_enabled, tax_rate, tax_inclusive
-) VALUES (
-  'Gentlemen Barber Operating System', 'PT Barbershop Nusantara', '081234567890', 'admin@barbershop.co.id', 'IDR', 'Asia/Jakarta', false, 0.00, true
-) ON CONFLICT DO NOTHING;
-
+-- Identitas bisnis diisi oleh pelanggan saat onboarding, bukan data contoh.

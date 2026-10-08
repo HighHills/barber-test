@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260919053153_phase_11_lock_business_settings_direct_writes_sql", "label": "20260919053153_phase_11_lock_business_settings_direct_writes.sql", "file_type": "code", "source_file": "supabase/migrations/20260919053153_phase_11_lock_business_settings_direct_writes.sql", "source_location": null}], "edges": []}

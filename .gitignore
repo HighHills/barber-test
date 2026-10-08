@@ -42,4 +42,4 @@ supabase/.temp/
 supabase/.branches/
 *.tsbuildinfo
 
-
+deployments/

@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260919050615_phase_8_lock_inventory_document_direct_writes_sql", "label": "20260919050615_phase_8_lock_inventory_document_direct_writes.sql", "file_type": "code", "source_file": "supabase/migrations/20260919050615_phase_8_lock_inventory_document_direct_writes.sql", "source_location": null}], "edges": []}

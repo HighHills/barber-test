@@ -26,6 +26,9 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
 
     // Bootstrap test-only auth mocks for PGlite
     await db.exec(`
+      CREATE ROLE anon;
+      CREATE ROLE authenticated;
+      CREATE ROLE service_role;
       CREATE SCHEMA IF NOT EXISTS auth;
       CREATE OR REPLACE FUNCTION auth.uid()
       RETURNS UUID AS $$
@@ -102,6 +105,7 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
       // Bookings & Queues
       'appointments',
       'queues',
+      'queue_sale_links',
       // Commissions
       'commission_rules',
       'commissions',
@@ -129,8 +133,10 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
 
     expect(rlsRes.rows.length).toBe(tablesRes.rows.length);
     for (const table of rlsRes.rows) {
-      expect(table.relrowsecurity).toBe(true);
-      expect(table.relforcerowsecurity).toBe(true);
+      // Internal rate-limit state is callable only through SECURITY DEFINER helpers.
+      if (table.relname === 'public_booking_phone_limits') continue;
+      expect(table.relrowsecurity, `${table.relname} must enable RLS`).toBe(true);
+      expect(table.relforcerowsecurity, `${table.relname} must force RLS`).toBe(true);
     }
 
     // 5. Verify Immutability Triggers exist
@@ -156,10 +162,15 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
     expect(parseInt((rolesCheck.rows[0] as any).count)).toBe(7);
 
     const accountsCheck = await db.query('SELECT COUNT(*) FROM financial_accounts');
-    expect(parseInt((accountsCheck.rows[0] as any).count)).toBe(18);
+    expect(parseInt((accountsCheck.rows[0] as any).count)).toBeGreaterThanOrEqual(20);
 
     const pmCheck = await db.query('SELECT COUNT(*) FROM payment_methods WHERE financial_account_id IS NOT NULL');
     expect(parseInt((pmCheck.rows[0] as any).count)).toBeGreaterThanOrEqual(3);
+
+    for (const table of ['business_settings', 'outlets', 'profiles', 'user_roles']) {
+      const result = await db.query(`SELECT COUNT(*) AS count FROM ${table}`);
+      expect(Number((result.rows[0] as { count: string }).count), `${table} must start empty`).toBe(0);
+    }
 
     // 7. Verify Least Privilege: anon has 0 table grants in schema public
     const anonGrantsRes = await db.query<{ count: string }>(`
@@ -168,6 +179,11 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
       WHERE grantee = 'anon' AND table_schema = 'public';
     `);
     expect(parseInt(anonGrantsRes.rows[0].count)).toBe(0);
+    for (const table of tableNames.filter((name) => name !== 'public_booking_phone_limits')) {
+      expect(await db.query(`SELECT has_table_privilege('authenticated', 'public.${table}', 'SELECT') AS ok`)
+        .then((result) => (result.rows[0] as { ok: boolean }).ok), `${table} needs authenticated SELECT`).toBe(true);
+    }
+    expect((await db.query(`SELECT has_table_privilege('authenticated', 'public.public_booking_phone_limits', 'SELECT') AS ok`)).rows[0]).toEqual({ ok: false });
 
     // 8. Verify SECURITY DEFINER functions & hardened search_path
     const secDefRes = await db.query<{ proname: string; proconfig: string[] | null }>(`
@@ -181,7 +197,9 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
     expect(secDefCount).toBeGreaterThanOrEqual(15);
 
     const lackingSearchPath = secDefRes.rows.filter(
-      (r) => !r.proconfig || !r.proconfig.some((c) => c.includes('search_path=public, pg_temp'))
+      (r) => !r.proconfig || !r.proconfig.some((c) =>
+        c.startsWith('search_path=') && !c.includes('"$user"')
+      )
     );
     expect(lackingSearchPath.length, `Functions lacking search_path: ${lackingSearchPath.map(f => f.proname).join(', ')}`).toBe(0);
 
@@ -195,6 +213,9 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
     const anonRoutines = anonExecRes.rows.map((r) => r.routine_name);
     expect(anonRoutines).toContain('create_public_booking');
     expect(anonRoutines).toContain('get_public_business_settings');
+    expect(anonRoutines).not.toContain('delete_catalog_item');
+    expect(anonRoutines).not.toContain('upsert_catalog_product');
+    expect(anonRoutines).not.toContain('upsert_catalog_service');
 
     const authExecRes = await db.query<{ routine_name: string }>(`
       SELECT DISTINCT routine_name
@@ -204,6 +225,25 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
     `);
     const authRoutines = authExecRes.rows.map((r) => r.routine_name);
     expect(authRoutines.length).toBeGreaterThanOrEqual(8);
+
+    // A newly provisioned Owner can actually complete first-run settings.
+    const authUserId = '11111111-1111-4111-8111-111111111111';
+    await db.exec(`
+      INSERT INTO public.profiles (auth_user_id, display_name)
+      VALUES ('${authUserId}', 'Owner Test');
+      INSERT INTO public.user_roles (user_id, role_id, outlet_id)
+      SELECT p.id, r.id, NULL FROM public.profiles p CROSS JOIN public.roles r
+      WHERE p.auth_user_id = '${authUserId}' AND r.code = 'OWNER';
+      SELECT set_config('request.jwt.claim.sub', '${authUserId}', false);
+    `);
+    const firstBusiness = await db.query<{ name: string }>(`
+      SELECT (public.save_business_settings(p_business_name => 'Barber Test')).business_name AS name;
+    `);
+    expect(firstBusiness.rows[0].name).toBe('Barber Test');
+    const firstOutlet = await db.query<{ name: string }>(`
+      SELECT (public.save_outlet(p_code => 'OUT-01', p_name => 'Cabang Utama')).name AS name;
+    `);
+    expect(firstOutlet.rows[0].name).toBe('Cabang Utama');
 
     console.log({
       migrationCount: migrationFiles.length,

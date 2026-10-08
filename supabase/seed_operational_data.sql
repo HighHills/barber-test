@@ -1,6 +1,6 @@
 -- ============================================================
--- SYSTEM ROLES, RBAC, COA & USER ROLE ENROLLMENT
--- Jalankan skrip ini di Supabase SQL Editor.
+-- LEGACY DEVELOPMENT SEED. Jangan gunakan untuk instalasi pelanggan.
+-- Instalasi pelanggan memakai supabase/seed.sql dan provisioning OWNER spesifik.
 -- ============================================================
 
 -- 1. Standard Chart of Accounts (COA) untuk Jurnal Akuntansi Level 2
@@ -159,20 +159,9 @@ BEGIN
   END IF;
 END $$;
 
--- 7. HUBUNGKAN AKUN PROFIL LOGIN KE PERAN OWNER (HAK AKSES GLOBAL SEMUA OUTLET)
-INSERT INTO public.user_roles (user_id, role_id, outlet_id)
-SELECT
-  p.id,
-  r.id,
-  NULL -- NULL outlet_id memberikan akses penuh ke semua cabang untuk OWNER
-FROM public.profiles p
-CROSS JOIN public.roles r
-WHERE r.code = 'OWNER'
-  AND NOT EXISTS (
-    SELECT 1 FROM public.user_roles ur WHERE ur.user_id = p.id AND ur.role_id = r.id
-  );
+-- Penetapan OWNER massal dihapus; tiap pelanggan harus diprovisi secara spesifik.
 
--- 8. Cek Hasil Verifikasi
+-- 7. Cek Hasil Verifikasi
 SELECT 'roles' AS table_name, COUNT(*) AS count FROM public.roles
 UNION ALL
 SELECT 'user_roles', COUNT(*) FROM public.user_roles

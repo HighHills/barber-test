@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260928112000_lockdown_employee_leave_schedule_direct_mutations_sql", "label": "20260928112000_lockdown_employee_leave_schedule_direct_mutations.sql", "file_type": "code", "source_file": "supabase/migrations/20260928112000_lockdown_employee_leave_schedule_direct_mutations.sql", "source_location": null}], "edges": []}

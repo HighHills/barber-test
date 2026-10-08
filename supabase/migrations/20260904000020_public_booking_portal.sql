@@ -514,3 +514,8 @@ GRANT EXECUTE ON FUNCTION get_public_booking_services(UUID) TO anon, authenticat
 GRANT EXECUTE ON FUNCTION get_public_booking_barbers(UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION get_public_booking_slots(UUID, DATE, UUID, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION create_public_booking(UUID, UUID, DATE, TIME, VARCHAR, VARCHAR, UUID, VARCHAR, TEXT) TO anon, authenticated;
+
+-- New Supabase projects no longer auto-grant Data API table access. RLS still
+-- governs every authenticated read; later boundary migrations revoke writes.
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;

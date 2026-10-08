@@ -1,0 +1,639 @@
+<!DOCTYPE html><html class="light" lang="id"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Barbershop OS - Pelanggan &amp; Membership</title>
+<!-- Google Fonts: Plus Jakarta Sans & Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus Jakarta Sans:wght@500;600;700;800&amp;display=swap" rel="stylesheet">
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration (Theme Tokens) -->
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-surface-variant": "#534434",
+            "surface-container-highest": "#d3e4fe",
+            "on-secondary-container": "#5c647a",
+            "tertiary-fixed-dim": "#4edea3",
+            "surface-container-low": "#eff4ff",
+            "secondary": "#565e74",
+            "on-primary": "#ffffff",
+            "on-error": "#ffffff",
+            "on-background": "#0b1c30",
+            "secondary-container": "#dae2fd",
+            "on-secondary-fixed": "#131b2e",
+            "inverse-surface": "#213145",
+            "secondary-fixed-dim": "#bec6e0",
+            "inverse-on-surface": "#eaf1ff",
+            "outline-variant": "#d8c3ad",
+            "surface-container": "#e5eeff",
+            "error-container": "#ffdad6",
+            "surface": "#f8f9ff",
+            "tertiary": "#006c49",
+            "outline": "#867461",
+            "surface-dim": "#cbdbf5",
+            "surface-tint": "#855300",
+            "on-primary-fixed": "#2a1700",
+            "on-secondary": "#ffffff",
+            "surface-variant": "#d3e4fe",
+            "on-tertiary-fixed-variant": "#005236",
+            "on-tertiary": "#ffffff",
+            "secondary-fixed": "#dae2fd",
+            "on-secondary-fixed-variant": "#3f465c",
+            "on-tertiary-fixed": "#002113",
+            "primary-fixed": "#ffddb8",
+            "surface-bright": "#f8f9ff",
+            "error": "#ba1a1a",
+            "on-tertiary-container": "#004e34",
+            "primary-fixed-dim": "#ffb95f",
+            "surface-container-high": "#dce9ff",
+            "on-primary-container": "#613b00",
+            "primary": "#855300",
+            "surface-container-lowest": "#ffffff",
+            "primary-container": "#f59e0b",
+            "background": "#f8f9ff",
+            "on-primary-fixed-variant": "#653e00",
+            "tertiary-container": "#30c88f",
+            "on-error-container": "#93000a",
+            "inverse-primary": "#ffb95f",
+            "tertiary-fixed": "#6ffbbe",
+            "on-surface": "#0b1c30"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin-desktop": "2rem",
+            "gutter-desktop": "1.5rem",
+            "space-lg": "1.5rem",
+            "space-2xl": "3rem",
+            "space-xl": "2rem",
+            "space-sm": "0.5rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "margin-tablet": "1.5rem",
+            "space-md": "1rem",
+            "gutter": "1.25rem"
+          },
+          "fontFamily": {
+            "body-lg": ["Inter"],
+            "headline-md": ["Plus Jakarta Sans"],
+            "display-lg": ["Plus Jakarta Sans"],
+            "label-lg": ["Plus Jakarta Sans"],
+            "headline-sm": ["Plus Jakarta Sans"],
+            "label-sm": ["Plus Jakarta Sans"],
+            "display-mobile": ["Plus Jakarta Sans"],
+            "headline-lg": ["Plus Jakarta Sans"],
+            "body-md": ["Inter"],
+            "price-kpi": ["Plus Jakarta Sans"],
+            "body-sm": ["Inter"],
+            "label-md": ["Plus Jakarta Sans"]
+          },
+          "fontSize": {
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+            "headline-md": ["22px", { "lineHeight": "30px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "display-lg": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.03em", "fontWeight": "800" }],
+            "label-lg": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+            "headline-sm": ["18px", { "lineHeight": "26px", "fontWeight": "600" }],
+            "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.04em", "fontWeight": "700" }],
+            "display-mobile": ["30px", { "lineHeight": "38px", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+            "headline-lg": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+            "price-kpi": ["32px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+            "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      font-size: 20px;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface antialiased flex min-h-screen overflow-x-hidden font-body-md">
+<!-- ========================================================================= -->
+<!-- SIDEBAR (SideNavBar Component Blueprint from JSON & Style Guidance)       -->
+<!-- ========================================================================= -->
+<aside class="flex flex-col justify-between h-full w-64 p-4 border-r border-outline-variant fixed top-0 left-0 bg-surface-container-lowest z-40 shadow-sm">
+<div class="flex flex-col gap-4">
+<!-- Brand Header -->
+<div class="flex items-center gap-3 px-2 py-1">
+<div class="w-10 h-10 rounded-xl bg-primary-container text-on-primary-fixed flex items-center justify-center font-bold shadow-sm">
+<span class="material-symbols-outlined text-2xl font-semibold">content_cut</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface leading-tight">Barbershop OS</span>
+<span class="font-body-sm text-body-sm text-secondary">Sistem POS Operasional</span>
+</div>
+</div>
+<!-- Cabang Aktif Selector Card -->
+<div class="bg-surface border border-outline-variant/60 rounded-xl p-2.5">
+<span class="text-[10px] uppercase font-bold tracking-wider text-secondary px-1 block mb-1">Cabang Aktif</span>
+<button class="w-full flex items-center justify-between px-2.5 py-1.5 bg-surface-container-lowest border border-outline-variant/80 rounded-lg text-left hover:border-primary-container transition-colors">
+<div class="flex items-center gap-2 truncate">
+<span class="material-symbols-outlined text-primary text-[18px]">store</span>
+<span class="font-label-md text-label-md text-on-surface truncate">Barbershop Pusat - Sudirman</span>
+</div>
+<span class="material-symbols-outlined text-secondary text-[16px]">expand_more</span>
+</button>
+</div>
+<!-- Navigation Section Label -->
+<div class="px-2 pt-1">
+<span class="text-[10px] uppercase font-bold tracking-wider text-secondary">Operasional</span>
+</div>
+<!-- Main Navigation Menu Tabs -->
+<nav class="flex flex-col gap-1">
+<!-- Beranda -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="">Beranda</span>
+</a>
+<!-- Kasir / POS -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined">point_of_sale</span>
+<span class="">Kasir / POS</span>
+</a>
+<!-- Riwayat Nota -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="">Riwayat Nota</span>
+</a>
+<!-- Antrean -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="">Antrean</span>
+</a>
+<!-- Janji Temu -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined">calendar_month</span>
+<span class="">Janji Temu</span>
+</a>
+<!-- Pelanggan (ACTIVE TAB - Maps directly to Customer/Pelanggan Destination) -->
+<a class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-primary-container text-on-primary-fixed font-label-md font-semibold transition-all duration-150 shadow-sm" href="#">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined" style="font-variation-settings: &quot;FILL&quot; 1;">badge</span>
+<span class="">Pelanggan</span>
+</div>
+<span class="w-1.5 h-4 bg-on-primary-fixed rounded-full"></span>
+</a>
+</nav>
+</div>
+<!-- Sidebar Bottom / Footer User Profile -->
+<div class="border-t border-outline-variant/60 pt-4 flex flex-col gap-3">
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface border border-outline-variant/40">
+<div class="flex items-center gap-2.5 truncate">
+<div class="w-8 h-8 rounded-full bg-secondary-fixed text-on-secondary-fixed font-bold flex items-center justify-center font-label-md text-xs">
+            N
+          </div>
+<div class="flex flex-col truncate">
+<span class="font-label-md text-label-md text-on-surface truncate">nobelmarchiano98</span>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary-container"></span>
+<span class="text-[10px] font-bold text-primary-container tracking-wider uppercase">OWNER</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Action Links -->
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-md transition-colors duration-150" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="">Pengaturan</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-error hover:bg-error-container/40 font-label-md transition-colors duration-150" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="">Keluar</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- ========================================================================= -->
+<!-- MAIN WORKSPACE & TOP BAR                                                  -->
+<!-- ========================================================================= -->
+<div class="pl-64 flex flex-col flex-1 min-h-screen">
+<!-- TopNavBar (JSON Blueprint executed) -->
+<header class="sticky top-0 z-30 flex items-center justify-between px-6 h-16 w-full bg-surface-container-lowest border-b border-outline-variant/60 shadow-sm">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary">desktop_windows</span>
+<div class="flex items-center gap-2 text-on-surface font-label-lg">
+<span class="text-secondary font-body-md">Terminal Kasir Operasional</span>
+<span class="text-outline-variant">/</span>
+<span class="font-semibold text-on-surface">Pelanggan &amp; Membership</span>
+</div>
+</div>
+<!-- Trailing Quick Actions & Controls -->
+<div class="flex items-center gap-3">
+<!-- Quick POS triggers -->
+<button class="flex items-center gap-1.5 px-3 py-1.5 text-on-surface font-label-md border border-outline-variant rounded-lg hover:bg-surface transition-colors active:scale-[0.98]">
+<span class="material-symbols-outlined text-secondary text-[18px]">add_notes</span>
+<span class="">Tambah Nota</span>
+</button>
+<button class="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary-container text-on-primary-fixed font-label-md font-semibold rounded-lg hover:brightness-95 transition-all shadow-sm active:scale-[0.98]">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: &quot;FILL&quot; 1;">point_of_sale</span>
+<span class="">Buka Kasir</span>
+</button>
+<div class="h-6 w-px bg-outline-variant/60 mx-1"></div>
+<!-- Trailing Utility Icons -->
+<button class="w-9 h-9 rounded-lg border border-outline-variant/60 flex items-center justify-center text-secondary hover:text-on-surface hover:bg-surface transition-colors" title="Bantuan">
+<span class="material-symbols-outlined text-[20px]">help</span>
+</button>
+<button class="relative w-9 h-9 rounded-lg border border-outline-variant/60 flex items-center justify-center text-secondary hover:text-on-surface hover:bg-surface transition-colors" title="Notifikasi">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-primary-container rounded-full ring-2 ring-white"></span>
+</button>
+</div>
+</header>
+<!-- ========================================================================= -->
+<!-- CONTENT CANVAS                                                            -->
+<!-- ========================================================================= -->
+<main class="flex-1 p-6 lg:p-8 max-w-[1440px] w-full mx-auto flex flex-col gap-6">
+<!-- Header Section: Title, Subtitle, and Primary CTA -->
+<section class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface font-bold tracking-tight">Pelanggan &amp; Membership</h1>
+<p class="font-body-md text-body-md text-secondary mt-0.5">
+            Direktori &amp; Profil Member | <span class="text-on-surface font-medium">Barbershop Pusat - Sudirman</span> <span class="bg-surface-container px-2 py-0.5 rounded-full text-xs font-semibold text-secondary ml-1">13 terdaftar</span>
+</p>
+</div>
+<!-- Primary CTA: Tambah Pelanggan -->
+<button class="inline-flex items-center justify-center gap-2 bg-primary-container hover:bg-amber-600 text-on-primary-fixed font-label-lg px-5 py-2.5 rounded-xl font-bold shadow-sm transition-all duration-150 active:scale-[0.98]">
+<span class="material-symbols-outlined text-[20px]">person_add</span>
+<span class="">Tambah Pelanggan</span>
+</button>
+</section>
+<!-- Segmented Control Tabs & Metrics Overview -->
+<div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-outline-variant/50 pb-4">
+<!-- Segmented Tab Switcher -->
+<div class="inline-flex p-1 bg-surface-container rounded-xl border border-outline-variant/50 self-start">
+<button class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-lowest text-on-surface font-label-md font-bold shadow-sm transition-all"><span class="material-symbols-outlined text-primary-container text-[18px]">group</span><span class="">Daftar Pelanggan</span><span class="ml-1 px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100/70 text-[#9A3412] border border-[#FDBA74]">13</span></button>
+<button class="flex items-center gap-2 px-4 py-2 rounded-lg text-secondary hover:text-on-surface font-label-md transition-colors">
+<span class="material-symbols-outlined text-[18px]">emoji_events</span>
+<span class="">Membership &amp; Loyalty</span>
+</button>
+</div>
+<!-- Quick Summary Micro-KPIs -->
+<div class="flex items-center gap-3 overflow-x-auto pb-1 md:pb-0">
+<div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-lowest rounded-lg border border-outline-variant/60 shadow-sm text-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+<span class="text-secondary">Gold / Platinum:</span>
+<span class="font-bold text-on-surface">5 Member</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-lowest rounded-lg border border-outline-variant/60 shadow-sm text-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+<span class="text-secondary">Silver / Bronze:</span>
+<span class="font-bold text-on-surface">4 Member</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-lowest rounded-lg border border-outline-variant/60 shadow-sm text-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-stone-300"></span>
+<span class="text-secondary">Non-Member:</span>
+<span class="font-bold text-on-surface">4 Tamu</span>
+</div>
+</div>
+</div>
+<!-- Controls Row: Search Input & Membership Tier Filter Chips -->
+<div class="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+<!-- Search Field -->
+<div class="relative flex-1 max-w-xl">
+<span class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-secondary">
+<span class="material-symbols-outlined text-[20px]">person_search</span>
+</span>
+<input class="w-full pl-10 pr-4 py-2.5 bg-surface-container-lowest border border-outline-variant/80 rounded-xl text-on-surface font-body-md placeholder:text-secondary/70 focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all shadow-sm" placeholder="Cari nama, no. HP, atau kode pelanggan..." type="text">
+</div>
+<!-- Filter Chips (Capsules) -->
+<div class="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+<!-- SEMUA (Active Chip) -->
+<button class="px-4 py-1.5 rounded-full bg-on-surface text-surface-container-lowest font-label-sm uppercase tracking-wider text-xs font-bold transition-all shadow-sm">
+            Semua
+          </button>
+<!-- BRONZE -->
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest border border-amber-900/20 text-[#9A3412] hover:bg-amber-50 font-label-sm uppercase tracking-wider text-xs font-semibold transition-all">
+            Bronze
+          </button>
+<!-- SILVER -->
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest border border-slate-300 text-slate-600 hover:bg-slate-100 font-label-sm uppercase tracking-wider text-xs font-semibold transition-all">
+            Silver
+          </button>
+<!-- GOLD -->
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest border border-amber-300 text-amber-700 hover:bg-amber-50 font-label-sm uppercase tracking-wider text-xs font-semibold transition-all">
+            Gold
+          </button>
+<!-- PLATINUM -->
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest border border-slate-400 text-slate-800 hover:bg-slate-50 font-label-sm uppercase tracking-wider text-xs font-semibold transition-all">
+            Platinum
+          </button>
+</div>
+</div>
+<!-- ========================================================================= -->
+<!-- CUSTOMER CARDS GRID (2-Column Responsive Layout)                          -->
+<!-- ========================================================================= -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+<!-- CARD 1: Kuaku (BRONZE MEMBER) -->
+<div class="bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-outline-variant transition-all flex flex-col justify-between gap-4">
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-surface-container text-on-surface font-headline-sm font-bold flex items-center justify-center shrink-0 border border-outline-variant/30">
+                KU
+              </div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Kuaku</h3>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260926-72D950</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081155442244
+                </span>
+</div>
+</div>
+<!-- Bronze Member Pill -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-[#FFEDD5] text-[#9A3412] border border-[#FDBA74] shrink-0">
+              Bronze Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary-container text-[18px]" style="font-variation-settings: &quot;FILL&quot; 1;">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-primary-container">5 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 2: Realtime Queue QA (NON-MEMBER) -->
+<div class="bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-outline-variant transition-all flex flex-col justify-between gap-4">
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-surface-container text-on-surface font-headline-sm font-bold flex items-center justify-center shrink-0 border border-outline-variant/30">
+                RQ
+              </div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Realtime Queue QA</h3>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260926-97C398</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081298765436
+                </span>
+</div>
+</div>
+<!-- Non-Member Ghost Pill -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-surface text-slate-500 border border-slate-300 shrink-0">
+              Non-Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-[18px]">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-secondary">0 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 3: Realtime Today QA (NON-MEMBER) -->
+<div class="bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-outline-variant transition-all flex flex-col justify-between gap-4">
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-surface-container text-on-surface font-headline-sm font-bold flex items-center justify-center shrink-0 border border-outline-variant/30">
+                RT
+              </div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Realtime Today QA</h3>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260926-DF1827</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081298765435
+                </span>
+</div>
+</div>
+<!-- Non-Member Ghost Pill -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-surface text-slate-500 border border-slate-300 shrink-0">
+              Non-Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-[18px]">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-secondary">0 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 4: Realtime Booking QA (NON-MEMBER) -->
+<div class="bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-outline-variant transition-all flex flex-col justify-between gap-4">
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-surface-container text-on-surface font-headline-sm font-bold flex items-center justify-center shrink-0 border border-outline-variant/30">
+                RB
+              </div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Realtime Booking QA</h3>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260926-C330D8</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081298765434
+                </span>
+</div>
+</div>
+<!-- Non-Member Ghost Pill -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-surface text-slate-500 border border-slate-300 shrink-0">
+              Non-Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-[18px]">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-secondary">0 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 5: Andi Setiawan (GOLD MEMBER) -->
+<div class="bg-surface-container-lowest border border-amber-300/60 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-primary-container transition-all flex flex-col justify-between gap-4 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full blur-2xl pointer-events-none -mr-8 -mt-8"></div>
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-amber-100/70 text-amber-900 font-headline-sm font-bold flex items-center justify-center shrink-0 border border-amber-200">
+                AS
+              </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Andi Setiawan</h3>
+<span class="material-symbols-outlined text-primary-container text-[18px]" style="font-variation-settings: &quot;FILL&quot; 1;">verified</span>
+</div>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260810-88A120</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081234567890
+                </span>
+</div>
+</div>
+<!-- Gold Member Badge (Amber fill, gold border, dark amber text) -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] shrink-0">
+              Gold Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary-container text-[18px]" style="font-variation-settings: &quot;FILL&quot; 1;">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-amber-700">48 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 6: Budi Pratama (SILVER MEMBER) -->
+<div class="bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-outline-variant transition-all flex flex-col justify-between gap-4">
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3.5">
+<div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-800 font-headline-sm font-bold flex items-center justify-center shrink-0 border border-slate-200">
+                BP
+              </div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Budi Pratama</h3>
+<span class="font-body-sm text-body-sm text-secondary font-mono tracking-tight mt-0.5">CUST-20260715-44B901</span>
+<span class="font-body-md text-body-md text-on-surface font-medium flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">phone_iphone</span>
+                  081398877665
+                </span>
+</div>
+</div>
+<!-- Silver Member Badge (Slate-100 fill, light border, #475569 text) -->
+<span class="rounded-full px-3 py-1 font-label-sm text-[11px] font-bold tracking-wider uppercase bg-slate-100 text-[#475569] border border-slate-200 shrink-0">
+              Silver Member
+            </span>
+</div>
+<div class="pt-3 border-t border-outline-variant/40 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary-container text-[18px]" style="font-variation-settings: &quot;FILL&quot; 1;">stars</span>
+<span class="font-body-sm text-body-sm text-secondary">Loyalty:</span>
+<span class="font-label-md text-label-md font-bold text-slate-700">22 Poin</span>
+</div>
+<!-- Action Buttons Group -->
+<div class="flex items-center gap-2">
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-green-700 hover:border-green-300 hover:bg-green-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-green-600">chat</span>
+                WhatsApp
+              </a>
+<a class="px-2.5 py-1.5 rounded-lg border border-outline-variant/60 text-secondary hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 font-label-md text-xs flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px] text-blue-600">call</span>
+                Telepon
+              </a>
+<button class="px-3 py-1.5 rounded-lg text-primary font-label-md font-bold hover:bg-surface-container text-xs flex items-center gap-0.5 transition-colors">
+<span class="">Lihat Profil</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Pagination / Footer Counter Indicator -->
+<footer class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-outline-variant/40 text-secondary font-body-sm">
+<p class="">Menampilkan <span class="font-semibold text-on-surface">6</span> dari <span class="font-semibold text-on-surface">13</span> total pelanggan</p>
+<div class="inline-flex items-center gap-1">
+<button class="p-2 rounded-lg border border-outline-variant/60 hover:bg-surface-container disabled:opacity-40" disabled="">
+<span class="material-symbols-outlined text-[18px]">chevron_left</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary-fixed font-bold font-label-md text-xs">
+            1
+          </button>
+<button class="px-3 py-1.5 rounded-lg hover:bg-surface-container text-on-surface font-label-md text-xs">
+            2
+          </button>
+<button class="px-3 py-1.5 rounded-lg hover:bg-surface-container text-on-surface font-label-md text-xs">
+            3
+          </button>
+<button class="p-2 rounded-lg border border-outline-variant/60 hover:bg-surface-container">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+</div>
+</footer>
+</main>
+</div>
+
+
+</body></html>

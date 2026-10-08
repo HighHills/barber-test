@@ -191,12 +191,12 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
       if (!profileData) {
         setProfile(null);
         setError(
-          'Akun login belum terhubung ke tabel profiles. Minta OWNER untuk menjalankan supabase/seed_operational_data.sql atau mapping user ke profile.'
+          'Akun login belum diaktivasi. Minta administrator menghubungkan akun ini ke profil dan peran yang sesuai.'
         );
       } else {
         // Query user role and assigned outlet
-        let userRoleCode = 'OWNER';
-        let userRoleName = 'Business Owner';
+        let userRoleCode = 'UNASSIGNED';
+        let userRoleName = 'Belum memiliki peran';
         let userAssignedOutletId: string | null = null;
 
         try {
@@ -210,13 +210,17 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
             const cashierRole = userRolesData.find((ur: any) => ur.roles?.code === 'CASHIER');
             const primary = cashierRole || userRolesData[0];
             if (primary && primary.roles) {
-              userRoleCode = (primary.roles as any).code || 'OWNER';
-              userRoleName = (primary.roles as any).name || 'Business Owner';
+              userRoleCode = (primary.roles as any).code || 'UNASSIGNED';
+              userRoleName = (primary.roles as any).name || 'Belum memiliki peran';
               userAssignedOutletId = primary.outlet_id;
             }
           }
         } catch (roleCatchErr) {
           console.warn('User roles fetch error:', roleCatchErr);
+        }
+
+        if (userRoleCode === 'UNASSIGNED') {
+          setError('Akun belum memiliki peran aktif. Hubungi administrator untuk mengatur akses.');
         }
 
         const activeProfile: CashierProfile = {
@@ -381,7 +385,7 @@ export function PosProvider({ children }: { children: React.ReactNode }): React.
   }, [user]);
 
   // RBAC & Sub-Account properties
-  const effectiveRoleCode = simulatedRole || profile?.role_code || 'OWNER';
+  const effectiveRoleCode = simulatedRole || profile?.role_code || 'UNASSIGNED';
   const isCashier = effectiveRoleCode === 'CASHIER';
   const isOwner = effectiveRoleCode === 'OWNER' || effectiveRoleCode === 'ADMIN';
   const effectiveAssignedOutletId = isCashier

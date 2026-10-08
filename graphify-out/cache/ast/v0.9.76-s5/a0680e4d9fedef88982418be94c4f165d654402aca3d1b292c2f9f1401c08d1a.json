@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260928094447_harden_appointment_checkin_barber_availability_sql", "label": "20260928094447_harden_appointment_checkin_barber_availability.sql", "file_type": "code", "source_file": "supabase/migrations/20260928094447_harden_appointment_checkin_barber_availability.sql", "source_location": null}], "edges": []}

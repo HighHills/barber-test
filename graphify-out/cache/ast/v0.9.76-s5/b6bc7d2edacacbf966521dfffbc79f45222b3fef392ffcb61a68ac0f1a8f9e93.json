@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260911000001_catalog_mutation_boundary_hardening_sql", "label": "20260911000001_catalog_mutation_boundary_hardening.sql", "file_type": "code", "source_file": "supabase/migrations/20260911000001_catalog_mutation_boundary_hardening.sql", "source_location": null}], "edges": []}

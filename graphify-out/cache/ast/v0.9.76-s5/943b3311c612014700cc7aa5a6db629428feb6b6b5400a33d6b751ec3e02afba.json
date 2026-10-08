@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260914000001_lockdown_appointment_direct_update_privilege_sql", "label": "20260914000001_lockdown_appointment_direct_update_privilege.sql", "file_type": "code", "source_file": "supabase/migrations/20260914000001_lockdown_appointment_direct_update_privilege.sql", "source_location": null}], "edges": []}

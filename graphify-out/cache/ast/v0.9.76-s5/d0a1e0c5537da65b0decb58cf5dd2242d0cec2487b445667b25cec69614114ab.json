@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260928113000_lockdown_legacy_employee_schedule_rpc_sql", "label": "20260928113000_lockdown_legacy_employee_schedule_rpc.sql", "file_type": "code", "source_file": "supabase/migrations/20260928113000_lockdown_legacy_employee_schedule_rpc.sql", "source_location": null}], "edges": []}

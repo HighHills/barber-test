@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260910000038_security_analytics_view_hardening_sql", "label": "20260910000038_security_analytics_view_hardening.sql", "file_type": "code", "source_file": "supabase/migrations/20260910000038_security_analytics_view_hardening.sql", "source_location": null}], "edges": []}

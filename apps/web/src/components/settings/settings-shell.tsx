@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { usePos } from '../../context/pos-context';
 import type { SettingsSectionId } from '../../types/settings';
 import { PosHeader } from '../pos/pos-header';
 import { BusinessSettingsPanel } from './business-settings-panel';
@@ -83,6 +85,7 @@ const sidebarGroups: SidebarGroup[] = [
 ];
 
 export function SettingsShell(): React.JSX.Element {
+  const { roleCode } = usePos();
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('business');
   const [isSectionDirty, setIsSectionDirty] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -179,6 +182,12 @@ export function SettingsShell(): React.JSX.Element {
               </p>
             </div>
           </div>
+
+          {roleCode === 'OWNER' && (
+            <Link href="/settings/mobile-activation" onClick={(event) => { if (!handleBeforeNavigate('/settings/mobile-activation')) event.preventDefault(); }} className="rounded-xl border border-amber-500/40 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-500/10">
+              Aktivasi APK
+            </Link>
+          )}
 
           {/* Mobile Category Navigation Button (distinct from Header Menu) */}
           <button

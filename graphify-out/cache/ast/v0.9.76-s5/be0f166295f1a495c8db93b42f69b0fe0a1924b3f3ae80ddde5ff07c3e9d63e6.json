@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260907000028_public_booking_legacy_overload_lockdown_sql", "label": "20260907000028_public_booking_legacy_overload_lockdown.sql", "file_type": "code", "source_file": "supabase/migrations/20260907000028_public_booking_legacy_overload_lockdown.sql", "source_location": null}], "edges": []}
