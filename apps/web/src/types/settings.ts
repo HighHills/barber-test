@@ -1,5 +1,6 @@
 export type SettingsSectionId =
   | 'business'
+  | 'member-card'
   | 'outlets'
   | 'staff'
   | 'schedules'

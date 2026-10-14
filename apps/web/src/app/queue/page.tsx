@@ -12,6 +12,7 @@ import { QueueBoard } from '../../components/queue/queue-board';
 import { AppointmentCalendar } from '../../components/queue/appointment-calendar';
 import { WalkinModal } from '../../components/queue/walkin-modal';
 import { AppointmentModal } from '../../components/queue/appointment-modal';
+import { LeaveBookingImpacts } from '../../components/queue/leave-booking-impacts';
 import {
   parseBarberOperationalError,
   formatBarberOperationalErrorMessage,
@@ -631,6 +632,7 @@ function QueueManagementContent(): React.JSX.Element {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
+        <LeaveBookingImpacts outletId={currentOutlet?.id} />
         {/* Feedback Alert Banner */}
         {feedback && (
           <div

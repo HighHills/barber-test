@@ -45,6 +45,7 @@ interface CustomerDetailModalProps {
     special_notes?: string;
   }) => Promise<void>;
   onAdjustPoints: (points: number, reason: string) => Promise<void>;
+  onOpenMemberCard: (customerId: string) => Promise<void>;
   isSubmitting: boolean;
   barbers: Array<{ id: string; full_name: string }>;
 }
@@ -58,6 +59,7 @@ export function CustomerDetailModal({
   onClose,
   onSaveHaircutRecord,
   onAdjustPoints,
+  onOpenMemberCard,
   isSubmitting,
   barbers,
 }: CustomerDetailModalProps): React.JSX.Element | null {
@@ -208,6 +210,7 @@ export function CustomerDetailModal({
 
         {/* Modal Scroll Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+          <button type="button" onClick={() => void onOpenMemberCard(customer.id)} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950">Lihat / Bagikan Kartu Member</button>
           {/* 1. Membership Progression & Loyalty Points Bar */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Tier Progress Card */}

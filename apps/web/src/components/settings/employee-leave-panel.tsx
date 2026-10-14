@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePos } from '../../context/pos-context';
 import type { EmployeeItem, LeaveItem, LeaveStatus, OutletItem } from '../../types/settings';
 import { LeaveFormModal } from './leave-form-modal';
+import { LeaveBookingImpacts } from '../queue/leave-booking-impacts';
 import { mapEmployeeLeaveOperationError } from '../../lib/employee-leave-operation-errors';
 import {
   Calendar,
@@ -379,6 +380,7 @@ export function EmployeeLeavePanel({
       </div>
 
       {/* Table */}
+      <LeaveBookingImpacts outletId={outletFilter === 'ALL' ? undefined : outletFilter} refreshKey={leaves.map((leave) => `${leave.id}:${leave.status}:${leave.start_at}:${leave.end_at}`).join('|')} />
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-16 space-y-3">

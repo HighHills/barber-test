@@ -6,16 +6,18 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-export function customerPackage(slug) {
+export function validateCustomerSlug(slug) {
   if (!/^[a-z][a-z0-9-]{2,30}$/.test(slug) || slug.endsWith('-')) {
     throw new Error('Slug harus 3–31 karakter: huruf kecil, angka, tanda -, diawali huruf.');
   }
-  return `com.barbershop.${slug.replaceAll('-', '_')}`;
 }
 
-export function mobileConfig(name, slug) {
-  const packageName = customerPackage(slug);
-  return `module.exports = ({ config }) => ({\n  ...config,\n  name: ${JSON.stringify(name)},\n  slug: ${JSON.stringify(`barbershop-${slug}`)},\n  android: { ...config.android, package: ${JSON.stringify(packageName)} },\n});\n`;
+export function assertMemberCardReady(bucket, publicCardAccessible) {
+  if (bucket.id !== 'member-card-assets' || bucket.public !== true || bucket.file_size_limit !== 2097152 ||
+      !['image/png', 'image/jpeg', 'image/webp'].every((mime) => bucket.allowed_mime_types?.includes(mime)) ||
+      !publicCardAccessible) {
+    throw new Error('Kartu member atau Supabase Storage belum siap. Tidak membuat Owner atau data bisnis.');
+  }
 }
 
 async function main() {
@@ -38,7 +40,7 @@ async function main() {
     rl.close();
   }
   const { slug, ref, publicKey, ownerEmail, ownerName, businessName, outletCode, outletName } = answers;
-  customerPackage(slug);
+  validateCustomerSlug(slug);
   if (!/^[a-z0-9]{10,40}$/.test(ref)) throw new Error('Project ref Supabase tidak valid.');
   if (!publicKey || publicKey === serviceKey || publicKey.startsWith('sb_secret_')) throw new Error('Kunci publik kosong atau merupakan secret key.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new Error('Email Owner tidak valid.');
@@ -48,6 +50,9 @@ async function main() {
   }
   const outputDir = resolve('deployments', slug);
   if (existsSync(outputDir)) throw new Error(`Folder ${outputDir} sudah ada; instalasi tidak akan menimpanya.`);
+  if (!existsSync(resolve('supabase/migrations/20261013060518_member_cards.sql'))) {
+    throw new Error('Migrasi kartu member tidak ada di checkout ini. Gunakan rilis web yang lengkap.');
+  }
 
   const url = `https://${ref}.supabase.co`;
   const publicKeyCheck = await fetch(url + '/auth/v1/settings', { headers: { apikey: publicKey } });
@@ -78,11 +83,18 @@ async function main() {
   if (pushed.error || pushed.status !== 0) throw new Error(`Migrasi gagal. ${pushed.error?.message || 'Periksa output CLI di atas.'}`);
 
   const roles = await request('/rest/v1/roles?select=id&code=eq.OWNER');
-  const settings = await request('/rest/v1/business_settings?select=id&limit=1');
+  const settings = await request('/rest/v1/business_settings?select=id,member_card_name,member_card_lifetime,member_card_validity_months&limit=1');
   const outlets = await request('/rest/v1/outlets?select=id&limit=1');
+  const bucket = await request('/storage/v1/bucket/member-card-assets');
+  const publicCardCheck = await fetch(url + '/rest/v1/rpc/get_public_member_card', {
+    method: 'POST',
+    headers: { apikey: publicKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_token: '00000000-0000-4000-8000-000000000000' }),
+  });
   if (roles.length !== 1 || settings.length || outlets.length) {
     throw new Error('Kontrak seed/proyek kosong tidak sesuai. Tidak membuat Owner atau data bisnis.');
   }
+  assertMemberCardReady(bucket, publicCardCheck.ok);
 
   const password = randomBytes(24).toString('base64url');
   try {
@@ -108,14 +120,7 @@ async function main() {
   mkdirSync(outputDir, { recursive: true });
   const publicEnv = `NEXT_PUBLIC_SUPABASE_URL=${url}\nNEXT_PUBLIC_SUPABASE_ANON_KEY=${publicKey}\nMOBILE_ACTIVATION_SECRET=${randomBytes(32).toString('hex')}\n`;
   writeFileSync(resolve(outputDir, 'web.env.local'), publicEnv, { flag: 'wx', mode: 0o600 });
-  writeFileSync(resolve(outputDir, 'mobile.app.config.js'), mobileConfig(businessName, slug), { flag: 'wx', mode: 0o600 });
-  writeFileSync(resolve(outputDir, 'mobile.eas.json'), JSON.stringify({
-    build: {
-      'release-apk': { distribution: 'internal', android: { buildType: 'apk' } },
-      'store-aab': { android: { buildType: 'app-bundle' } },
-    },
-  }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
-  stdout.write(`\nSelesai. Konfigurasi build: ${outputDir}\nOwner: ${ownerEmail}\nPassword sementara (tampilkan sekali): ${password}\nGanti password setelah login pertama. Simpan secara aman.\n`);
+  stdout.write(`\nSelesai. Konfigurasi Vercel: ${resolve(outputDir, 'web.env.local')}\nOwner: ${ownerEmail}\nPassword sementara (tampilkan sekali): ${password}\nGanti password setelah login pertama. Deploy web, lalu hubungkan APK bersama melalui Pengaturan → Aktivasi APK.\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

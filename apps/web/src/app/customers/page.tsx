@@ -12,6 +12,7 @@ import type {
 import { PosHeader } from '../../components/pos/pos-header';
 import { CustomerCrmTable } from '../../components/crm/customer-crm-table';
 import { CustomerDetailModal } from '../../components/crm/customer-detail-modal';
+import { MemberCardShareModal, type IssuedMemberCard } from '../../components/crm/member-card-share-modal';
 import { CustomerFormModal } from '../../components/crm/customer-form-modal';
 import { TierConfigPanel } from '../../components/crm/tier-config-panel';
 import { LoyaltyLedgerView } from '../../components/crm/loyalty-ledger-view';
@@ -55,6 +56,7 @@ function CustomersContent(): React.JSX.Element {
 
   // Modals
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetailCRM | null>(null);
+  const [issuedCard, setIssuedCard] = useState<IssuedMemberCard | null>(null);
   const [customerModalTabHistory, setCustomerModalTabHistory] = useState<{
     haircuts: HaircutHistoryEntry[];
     loyalty: LoyaltyLedgerEntry[];
@@ -619,9 +621,16 @@ function CustomersContent(): React.JSX.Element {
           supabase
         );
 
-        setNotification({
+        const { data: card, error: cardError } = await supabase.rpc('issue_member_card', { p_customer_id: newCust.id });
+        if (cardError || !card || typeof card.token !== 'string') {
+          setNotification({ type: 'ERROR', message: `Pelanggan terdaftar, tetapi kartu belum terbit: ${cardError?.message || 'Coba lagi dari detail pelanggan.'}` });
+        } else {
+          setIssuedCard(card as IssuedMemberCard);
+        }
+
+        if (!cardError && card && typeof card.token === 'string') setNotification({
           type: 'SUCCESS',
-          message: `Pelanggan baru "${newCust.full_name}" (${newCust.customer_code}) berhasil didaftarkan!`,
+          message: `Pelanggan baru "${newCust.full_name}" (${newCust.customer_code}) dan kartu member berhasil dibuat.`,
         });
       }
 
@@ -850,10 +859,16 @@ function CustomersContent(): React.JSX.Element {
           onClose={() => setSelectedCustomer(null)}
           onSaveHaircutRecord={handleSaveHaircutRecord}
           onAdjustPoints={handleAdjustPoints}
+          onOpenMemberCard={async (customerId) => {
+            const { data, error } = await supabase.rpc('issue_member_card', { p_customer_id: customerId });
+            if (error || !data || typeof data.token !== 'string') { setNotification({ type: 'ERROR', message: error?.message || 'Gagal membuka kartu member.' }); return; }
+            setIssuedCard(data as IssuedMemberCard);
+          }}
           isSubmitting={isSubmitting}
           barbers={barbers}
         />
       )}
+      {issuedCard && <MemberCardShareModal card={issuedCard} onClose={() => setIssuedCard(null)} />}
     </div>
   );
 }

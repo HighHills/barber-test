@@ -30,6 +30,13 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
       CREATE ROLE authenticated;
       CREATE ROLE service_role;
       CREATE SCHEMA IF NOT EXISTS auth;
+      CREATE SCHEMA storage;
+      CREATE TABLE storage.buckets (
+        id text PRIMARY KEY, name text NOT NULL, public boolean NOT NULL,
+        file_size_limit bigint, allowed_mime_types text[]
+      );
+      CREATE TABLE storage.objects (bucket_id text, name text);
+      ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
       CREATE OR REPLACE FUNCTION auth.uid()
       RETURNS UUID AS $$
         SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::UUID;
@@ -42,6 +49,32 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
       sql = sql.replace(/CREATE EXTENSION IF NOT EXISTS "pgcrypto";/g, '-- pgcrypto builtin in PG13+');
       await db.exec(sql);
     }
+
+    const cardColumns = await db.query<{ table_name: string; column_name: string }>(`
+      SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND (
+        (table_name = 'business_settings' AND column_name IN ('member_card_name', 'member_card_logo_url', 'member_card_background_url', 'member_card_lifetime', 'member_card_validity_months'))
+        OR (table_name = 'customers' AND column_name IN ('member_card_token', 'member_card_issued_at', 'member_card_expires_at', 'member_card_name', 'member_card_logo_url', 'member_card_background_url'))
+      );
+    `);
+    expect(cardColumns.rows).toHaveLength(11);
+    const cardBucket = await db.query<{ public: boolean; file_size_limit: number; allowed_mime_types: string[] }>(`
+      SELECT public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id = 'member-card-assets';
+    `);
+    expect(cardBucket.rows[0]).toEqual({
+      public: true, file_size_limit: 2097152,
+      allowed_mime_types: ['image/png', 'image/jpeg', 'image/webp'],
+    });
+    const uploadPolicy = await db.query<{ cmd: string; roles: string[]; with_check: string }>(`
+      SELECT cmd, roles, with_check FROM pg_policies WHERE schemaname = 'storage'
+        AND tablename = 'objects' AND policyname = 'member_card_assets_owner_upload';
+    `);
+    expect(uploadPolicy.rows).toHaveLength(1);
+    expect(uploadPolicy.rows[0].cmd).toBe('INSERT');
+    expect(uploadPolicy.rows[0].roles).toEqual(['authenticated']);
+    expect(uploadPolicy.rows[0].with_check).toContain('is_owner_or_admin');
+    expect((await db.query(`SELECT has_function_privilege('anon', 'public.get_public_member_card(uuid)', 'EXECUTE') AS ok`)).rows[0]).toEqual({ ok: true });
+    expect((await db.query(`SELECT has_function_privilege('anon', 'public.issue_member_card(uuid)', 'EXECUTE') AS ok`)).rows[0]).toEqual({ ok: false });
 
     // 3. Verify the public schema contains the complete core contract.
     const tablesRes = await db.query<{ table_name: string }>(`
@@ -179,11 +212,12 @@ describe('Section 14: Clean Migration Install & Schema Contract Verification', (
       WHERE grantee = 'anon' AND table_schema = 'public';
     `);
     expect(parseInt(anonGrantsRes.rows[0].count)).toBe(0);
-    for (const table of tableNames.filter((name) => name !== 'public_booking_phone_limits')) {
+    for (const table of tableNames.filter((name) => !['public_booking_phone_limits', 'leave_booking_followups'].includes(name))) {
       expect(await db.query(`SELECT has_table_privilege('authenticated', 'public.${table}', 'SELECT') AS ok`)
         .then((result) => (result.rows[0] as { ok: boolean }).ok), `${table} needs authenticated SELECT`).toBe(true);
     }
     expect((await db.query(`SELECT has_table_privilege('authenticated', 'public.public_booking_phone_limits', 'SELECT') AS ok`)).rows[0]).toEqual({ ok: false });
+    expect((await db.query(`SELECT has_table_privilege('authenticated', 'public.leave_booking_followups', 'SELECT') AS ok`)).rows[0]).toEqual({ ok: false });
 
     // 8. Verify SECURITY DEFINER functions & hardened search_path
     const secDefRes = await db.query<{ proname: string; proconfig: string[] | null }>(`

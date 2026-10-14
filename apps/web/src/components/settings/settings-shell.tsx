@@ -6,6 +6,7 @@ import { usePos } from '../../context/pos-context';
 import type { SettingsSectionId } from '../../types/settings';
 import { PosHeader } from '../pos/pos-header';
 import { BusinessSettingsPanel } from './business-settings-panel';
+import { MemberCardSettingsPanel } from './member-card-settings-panel';
 import { OutletSettingsPanel } from './outlet-settings-panel';
 import { StaffSettingsPanel } from './staff-settings-panel';
 import { EmployeeSchedulePanel } from './employee-schedule-panel';
@@ -54,6 +55,7 @@ const sidebarGroups: SidebarGroup[] = [
     groupName: 'BISNIS',
     items: [
       { id: 'business', label: 'Informasi Bisnis', icon: Building2 },
+      { id: 'member-card', label: 'Kartu Member', icon: CreditCard },
       { id: 'outlets', label: 'Outlet & Cabang', icon: Store },
     ],
   },
@@ -307,6 +309,9 @@ export function SettingsShell(): React.JSX.Element {
               onDirtyChange={setIsSectionDirty}
               onNotification={setNotification}
             />
+          )}
+          {activeSection === 'member-card' && (
+            <MemberCardSettingsPanel onDirtyChange={setIsSectionDirty} onNotification={setNotification} />
           )}
 
           {activeSection === 'outlets' && (
